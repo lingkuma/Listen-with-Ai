@@ -150,9 +150,12 @@
 
 {{text}}</textarea>
         </label>
-        <label class="switch-row">
+        <label class="switch-row" for="ttsAutoPlay">
           <span>是否自动播放 TTS</span>
-          <input id="ttsAutoPlay" type="checkbox" />
+          <span class="switch-control">
+            <input id="ttsAutoPlay" type="checkbox" />
+            <span class="switch-track" aria-hidden="true"></span>
+          </span>
         </label>
       </article>
     </section>
