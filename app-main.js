@@ -6,7 +6,7 @@ const els = {
 };
 const STORAGE_KEY = "listen-with-ai-settings";
 const MAX_SECONDS = 20, TARGET_RATE = 16000;
-const state = { ctx: null, source: null, processor: null, sink: null, queue: [], total: 0, sampleRate: 48000, startedAt: 0, uiTimer: 0, sending: false };
+const state = { stream: null, ctx: null, source: null, processor: null, sink: null, queue: [], total: 0, sampleRate: 48000, startedAt: 0, uiTimer: 0, sending: false };
 
 restoreSettings();
 bindPersistEvents();

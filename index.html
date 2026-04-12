@@ -11,45 +11,75 @@
 </head>
 <body>
   <main class="page">
-    <section class="hero card dark">
-      <div>
-        <p class="eyebrow">Listen with AI</p>
-        <h1>进入页面后自动录音，随时把最近一段播客交给 AI 解析。</h1>
-        <p class="lead">页面加载即申请麦克风权限并开始录音。系统只保留最近 20 秒缓存，旧音频会立即丢弃，避免浏览器内存持续膨胀。</p>
-      </div>
-      <div class="hero-meta">
-        <div>
-          <span>录音状态</span>
-          <strong id="recordingStatus">准备中…</strong>
+    <section class="top-grid">
+      <article class="card output-stage">
+        <div class="stage-head">
+          <div>
+            <p class="eyebrow">01 实时解析</p>
+            <h1>把最近缓存片段发送给 AI</h1>
+            <p class="muted">把功能区前置：发送按钮和 AI 反馈都放在最上面，用户进入页面后第一眼就能看到操作入口与结果。</p>
+          </div>
         </div>
-        <div>
-          <span>缓存窗口</span>
-          <strong id="bufferStatus">0 / 20 秒</strong>
+
+        <div class="live-strip">
+          <div class="mic-visual" aria-hidden="true">
+            <span class="mic-pulse pulse-a"></span>
+            <span class="mic-pulse pulse-b"></span>
+            <span class="mic-core">🎙</span>
+          </div>
+          <div class="live-copy">
+            <p class="eyebrow">麦克风监听中</p>
+            <strong id="recordingStatus">准备中…</strong>
+            <span id="mimeLabel" class="pill subtle-pill">缓存引擎准备中</span>
+          </div>
+          <div class="wave-bars" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <button id="sendButton" class="send-inline" type="button">发送最近片段</button>
         </div>
-        <div>
-          <span>当前循环</span>
-          <strong id="cycleStatus">--</strong>
-        </div>
-      </div>
+
+        <pre id="resultOutput">等待发送音频…</pre>
+      </article>
     </section>
 
     <section class="grid">
+      <section class="hero hero-inline card dark">
+        <div>
+          <p class="eyebrow">Listen with AI</p>
+          <h2>自动录音、顶部发送、第二行再补充说明。</h2>
+          <p class="lead">黑色 Hero 保留，但不再占据首屏右侧空间。现在把它放到主内容第二行，继续承担说明作用，同时不影响上方核心操作区。</p>
+        </div>
+        <div class="hero-meta">
+          <div>
+            <span>缓存窗口</span>
+            <strong id="bufferStatus">0 / 20 秒</strong>
+          </div>
+          <div>
+            <span>当前循环</span>
+            <strong id="cycleStatus">--</strong>
+          </div>
+          <div>
+            <span>工作方式</span>
+            <strong>进入页面后自动录音</strong>
+          </div>
+        </div>
+      </section>
       <article class="card">
         <div class="section-head">
-          <p class="eyebrow">01 音频录制</p>
+          <p class="eyebrow">02 音频录制</p>
           <h2>自动连续录制</h2>
         </div>
         <p class="muted">内部改为 PCM 环形缓冲，只保留最近 20 秒原始音频；发送时再导出完整 WAV，避免分段拼接导致后续请求失效。</p>
         <div class="pill-row">
-          <span class="pill" id="mimeLabel">缓存引擎准备中</span>
           <span class="pill">自动开始</span>
           <span class="pill">超出缓存立即丢弃</span>
+          <span class="pill">顶部动效实时反馈</span>
         </div>
       </article>
 
       <article class="card">
         <div class="section-head">
-          <p class="eyebrow">02 区间设置</p>
+          <p class="eyebrow">03 区间设置</p>
           <h2>选择最近几秒</h2>
         </div>
         <label>发送最近音频区间（秒）
@@ -68,7 +98,7 @@
 
       <article class="card">
         <div class="section-head">
-          <p class="eyebrow">03 AI 参数设置</p>
+          <p class="eyebrow">04 AI 参数设置</p>
           <h2>自定义 AI 入口</h2>
         </div>
         <label>请求模式
@@ -85,22 +115,6 @@
           <textarea id="promptInput">用户正在通过博客学习新语言，请回答用户的问题，帮助用户理解博客的内容。</textarea>
         </label>
       </article>
-
-      <article class="card output-card">
-        <div class="section-head">
-          <p class="eyebrow">04 AI 解析输出</p>
-          <h2>结果面板</h2>
-        </div>
-        <pre id="resultOutput">等待发送音频…</pre>
-      </article>
-    </section>
-
-    <section class="action-bar card">
-      <div>
-        <p class="eyebrow">05 发送按钮</p>
-        <h2>把最近缓存片段发送给 AI</h2>
-      </div>
-      <button id="sendButton" type="button">发送最近片段</button>
     </section>
   </main>
   <script type="module" src="app-main.js"></script>
