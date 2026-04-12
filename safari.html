@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Safari 音频能力测试</title>
+  <link rel="stylesheet" href="./app.css" />
+</head>
+<body>
+  <main class="shell page" data-platform="safari">
+    <a class="back" href="./index.html">← 返回导航</a>
+    <section class="card hero">
+      <p class="eyebrow">Safari / iPhone / iPad 测试</p>
+      <h1>Safari 麦克风 / 屏幕音频 / 录屏测试</h1>
+      <p>
+        这个页面重点验证 Safari 的真实能力边界：麦克风通常可用，但“其他 App 正在播放的声音”基本无法由网页获得。
+      </p>
+    </section>
+
+    <section class="grid two-col">
+      <article class="card">
+        <h2>预期结果</h2>
+        <ul>
+          <li>麦克风：Safari 一般支持。</li>
+          <li>其他 App 声音：网页端基本不可得，即使录屏也通常没有相关音频轨。</li>
+          <li>录屏：不同 iOS / iPadOS 版本差异较大，整体限制多于桌面。</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h2>推荐测试步骤</h2>
+        <ol>
+          <li>务必使用 HTTPS，并在 Safari 中直接打开。</li>
+          <li>点击麦克风按钮验证基础录音能力。</li>
+          <li>再尝试录屏按钮，观察是否报错或拿不到音频轨。</li>
+          <li>如果录屏成功，回放录制文件，确认是否只有麦克风没有系统音频。</li>
+        </ol>
+      </article>
+    </section>
+
+    <section class="card controls">
+      <h2>操作区</h2>
+      <div class="button-row">
+        <button id="detectBtn">检测浏览器能力</button>
+        <button id="micBtn">申请麦克风</button>
+        <button id="displayBtn">申请录屏 + 音频</button>
+      </div>
+      <div class="button-row">
+        <button id="recordBtn">开始录制已授权流</button>
+        <button id="stopBtn" disabled>停止录制</button>
+        <button id="clearBtn">清空日志</button>
+      </div>
+    </section>
+
+    <section class="grid two-col">
+      <article class="card">
+        <h2>结果摘要</h2>
+        <div id="summary" class="summary">尚未开始测试。</div>
+        <pre id="log" class="log"></pre>
+      </article>
+      <article class="card">
+        <h2>录制结果</h2>
+        <video id="preview" controls playsinline></video>
+        <a id="downloadLink" class="download" download="safari-test.webm">下载录制文件</a>
+      </article>
+    </section>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Android 音频能力测试</title>
+  <link rel="stylesheet" href="./app.css" />
+</head>
+<body>
+  <main class="shell page" data-platform="android">
+    <a class="back" href="./index.html">← 返回导航</a>
+    <section class="card hero">
+      <p class="eyebrow">Android 浏览器测试</p>
+      <h1>Android 麦克风 / 设备音频 / 录屏测试</h1>
+      <p>
+        这个页面用于确认 Android 浏览器能否获取麦克风，以及在录屏场景下是否真的返回可用的音频轨。
+      </p>
+    </section>
+
+    <section class="grid two-col">
+      <article class="card">
+        <h2>预期结果</h2>
+        <ul>
+          <li>麦克风：大多数现代 Android 浏览器支持。</li>
+          <li>其他 App 声音：网页通常拿不到，<code>audio: true</code> 往往被忽略。</li>
+          <li>录屏：有些浏览器支持，但兼容性明显弱于桌面。</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h2>推荐测试步骤</h2>
+        <ol>
+          <li>用 HTTPS 环境打开此页。</li>
+          <li>先申请麦克风，再尝试申请录屏 + 音频。</li>
+          <li>观察日志里 <code>display audio tracks</code> 是否为 0。</li>
+          <li>如果能录制，回放结果确认是否仅有麦克风，没有系统音频。</li>
+        </ol>
+      </article>
+    </section>
+
+    <section class="card controls">
+      <h2>操作区</h2>
+      <div class="button-row">
+        <button id="detectBtn">检测浏览器能力</button>
+        <button id="micBtn">申请麦克风</button>
+        <button id="displayBtn">申请录屏 + 音频</button>
+      </div>
+      <div class="button-row">
+        <button id="recordBtn">开始录制已授权流</button>
+        <button id="stopBtn" disabled>停止录制</button>
+        <button id="clearBtn">清空日志</button>
+      </div>
+    </section>
+
+    <section class="grid two-col">
+      <article class="card">
+        <h2>结果摘要</h2>
+        <div id="summary" class="summary">尚未开始测试。</div>
+        <pre id="log" class="log"></pre>
+      </article>
+      <article class="card">
+        <h2>录制结果</h2>
+        <video id="preview" controls playsinline></video>
+        <a id="downloadLink" class="download" download="android-test.webm">下载录制文件</a>
+      </article>
+    </section>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>

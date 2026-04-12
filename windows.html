@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Windows 音频能力测试</title>
+  <link rel="stylesheet" href="./app.css" />
+</head>
+<body>
+  <main class="shell page" data-platform="windows">
+    <a class="back" href="./index.html">← 返回导航</a>
+    <section class="card hero">
+      <p class="eyebrow">Windows / Chrome / Edge 推荐</p>
+      <h1>Windows 浏览器音频与录屏测试</h1>
+      <p>
+        这个页面主要验证：麦克风是否可用、录屏时是否能拿到音频轨、最终录制文件里是否包含系统或标签页声音。
+      </p>
+    </section>
+
+    <section class="grid two-col">
+      <article class="card">
+        <h2>预期结果</h2>
+        <ul>
+          <li>麦克风：通常可以正常获取。</li>
+          <li>其他 App / 系统音频：Chromium 浏览器在部分共享模式下可能返回音频轨。</li>
+          <li>录屏：通常支持，是否带音频取决于浏览器共享弹窗中的选项。</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h2>推荐测试步骤</h2>
+        <ol>
+          <li>先点击“检测浏览器能力”。</li>
+          <li>点击“申请麦克风”。</li>
+          <li>点击“申请录屏 + 音频”，在弹窗中勾选共享音频。</li>
+          <li>开始录制，同时播放系统声音或其他窗口声音，录完后回放结果。</li>
+        </ol>
+      </article>
+    </section>
+
+    <section class="card controls">
+      <h2>操作区</h2>
+      <div class="button-row">
+        <button id="detectBtn">检测浏览器能力</button>
+        <button id="micBtn">申请麦克风</button>
+        <button id="displayBtn">申请录屏 + 音频</button>
+      </div>
+      <div class="button-row">
+        <button id="recordBtn">开始录制已授权流</button>
+        <button id="stopBtn" disabled>停止录制</button>
+        <button id="clearBtn">清空日志</button>
+      </div>
+    </section>
+
+    <section class="grid two-col">
+      <article class="card">
+        <h2>结果摘要</h2>
+        <div id="summary" class="summary">尚未开始测试。</div>
+        <pre id="log" class="log"></pre>
+      </article>
+      <article class="card">
+        <h2>录制结果</h2>
+        <video id="preview" controls playsinline></video>
+        <a id="downloadLink" class="download" download="windows-test.webm">下载录制文件</a>
+      </article>
+    </section>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>音频能力测试导航</title>
+  <link rel="stylesheet" href="./app.css" />
+</head>
+<body>
+  <main class="shell">
+    <section class="hero card">
+      <p class="eyebrow">Listen-with-Ai</p>
+      <h1>浏览器麦克风 / 系统音频 / 录屏测试</h1>
+      <p>
+        这是一个纯静态站点，可直接部署到 Vercel、Netlify 或任意静态托管。
+        下面 3 个页面分别针对 Windows、Android、Safari 做差异化测试说明。
+      </p>
+    </section>
+
+    <section class="grid links">
+      <a class="card link-card" href="./windows.html">
+        <h2>Windows 测试页</h2>
+        <p>重点验证麦克风、录屏、标签页/系统音频轨道是否能进入网页。</p>
+      </a>
+      <a class="card link-card" href="./android.html">
+        <h2>Android 测试页</h2>
+        <p>重点验证移动端麦克风与 getDisplayMedia 限制，观察是否返回 audio track。</p>
+      </a>
+      <a class="card link-card" href="./safari.html">
+        <h2>Safari / iPhone / iPad 测试页</h2>
+        <p>重点验证 Safari 的麦克风、录屏与“其他 App 音频不可得”的现实限制。</p>
+      </a>
+    </section>
+
+    <section class="card">
+      <h2>测试原则</h2>
+      <ul>
+        <li>麦克风：通过 <code>getUserMedia({ audio: true })</code> 检测。</li>
+        <li>其他 App / 系统音频：通过 <code>getDisplayMedia({ video: true, audio: true })</code> 观察是否返回音频轨。</li>
+        <li>录屏能力：通过屏幕共享 + <code>MediaRecorder</code> 录制结果验证。</li>
+      </ul>
+      <p class="hint">
+        注意：网页端无法直接越权抓取“其他 App 正在播放的声音”。本项目测试的是：浏览器在录屏授权场景下，是否愿意返回可用的音频轨。
+      </p>
+    </section>
+  </main>
+</body>
+</html>
