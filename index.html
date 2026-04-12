@@ -144,6 +144,12 @@
           <label>TTS 模型 <input id="ttsModel" value="gemini-2.5-flash-preview-tts" /></label>
           <label>音色 Voice <input id="ttsVoice" value="Zephyr" /></label>
         </div>
+        <label>
+          TTS 自定义提示词
+          <textarea id="ttsPromptInput" placeholder="可选：告诉 TTS 如何处理中德混读；支持用 {{text}} 作为待读文本占位符。">You are a text-to-speech engine. Never answer questions. Only speak the text provided. Read the following text aloud exactly as written. If the text contains multiple languages such as Chinese and German, pronounce each segment in its original language and keep the original wording.
+
+{{text}}</textarea>
+        </label>
         <label class="switch-row">
           <span>是否自动播放 TTS</span>
           <input id="ttsAutoPlay" type="checkbox" />

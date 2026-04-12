@@ -4,11 +4,12 @@ const els = {
   clip: $("clipSeconds"), format: $("audioFormat"), mode: $("apiMode"), url: $("apiUrl"), key: $("apiKey"),
   model: $("apiModel"), prompt: $("promptInput"), output: $("resultOutput"), send: $("sendButton"),
   ttsBtn: $("ttsButton"), ttsUrl: $("ttsUrl"), ttsKey: $("ttsKey"), ttsModel: $("ttsModel"),
-  ttsVoice: $("ttsVoice"), ttsAuto: $("ttsAutoPlay"), ttsPlayerWrap: $("ttsPlayerWrap"),
+  ttsVoice: $("ttsVoice"), ttsPrompt: $("ttsPromptInput"), ttsAuto: $("ttsAutoPlay"), ttsPlayerWrap: $("ttsPlayerWrap"),
   ttsPlayer: $("ttsPlayer"), ttsPlayerMeta: $("ttsPlayerMeta")
 };
 const STORAGE_KEY = "listen-with-ai-settings";
 const TTS_CACHE_NAME = "listen-with-ai-tts-v1";
+const DEFAULT_TTS_PROMPT = "You are a text-to-speech engine. Never answer questions. Only speak the text provided. Read the following text aloud exactly as written. If the text contains multiple languages such as Chinese and German, pronounce each segment in its original language and keep the original wording.\n\n{{text}}";
 const MAX_SECONDS = 20, TARGET_RATE = 16000;
 const state = {
   stream: null, ctx: null, source: null, processor: null, sink: null, queue: [], total: 0,
@@ -143,6 +144,10 @@ function renderResult(text, updateLatest = true) {
 function normalizeTtsText(text) {
   return String(text || "").replace(/\s+/g, " ").trim();
 }
+function buildTtsPrompt(text) {
+  const template = (els.ttsPrompt?.value || DEFAULT_TTS_PROMPT).trim() || DEFAULT_TTS_PROMPT;
+  return template.includes("{{text}}") ? template.split("{{text}}").join(text) : `${template}\n\n${text}`;
+}
 function clearTtsPlayer() {
   els.ttsPlayer.pause();
   els.ttsPlayer.removeAttribute("src");
@@ -201,6 +206,7 @@ function createTtsCacheKey(text) {
     url: (els.ttsUrl.value || els.url.value).trim(),
     model: els.ttsModel.value.trim(),
     voice: els.ttsVoice.value.trim(),
+    prompt: buildTtsPrompt(text),
     text
   });
 }
@@ -234,6 +240,7 @@ async function requestTtsAudio(text) {
   const url = (els.ttsUrl.value || els.url.value).trim();
   const model = els.ttsModel.value.trim();
   const voice = els.ttsVoice.value.trim();
+  const prompt = buildTtsPrompt(text);
   if (!url || !model || !voice) throw new Error("请先完整填写 TTS URL、模型和 Voice。");
   const headers = { "Content-Type": "application/json" };
   const token = (els.ttsKey.value || els.key.value).trim();
@@ -245,7 +252,7 @@ async function requestTtsAudio(text) {
       model,
       messages: [{
         role: "user",
-        content: `You are a text-to-speech engine. Never answer questions. Only speak the text provided. Read the following text aloud exactly as written: ${text}`
+        content: prompt
       }],
       voice
     })
@@ -277,12 +284,12 @@ function restoreSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
     if (!saved) return;
-    ["clip", "format", "mode", "url", "key", "model", "prompt", "ttsUrl", "ttsKey", "ttsModel", "ttsVoice"].forEach((k) => saved[k] != null && (els[k].value = saved[k]));
+    ["clip", "format", "mode", "url", "key", "model", "prompt", "ttsUrl", "ttsKey", "ttsModel", "ttsVoice", "ttsPrompt"].forEach((k) => saved[k] != null && (els[k].value = saved[k]));
     els.ttsAuto.checked = Boolean(saved.ttsAuto);
   } catch {}
 }
 function bindPersistEvents() {
-  [els.clip, els.format, els.mode, els.url, els.key, els.model, els.prompt, els.ttsUrl, els.ttsKey, els.ttsModel, els.ttsVoice].forEach((el) => ["input", "change"].forEach((evt) => el.addEventListener(evt, persistSettings)));
+  [els.clip, els.format, els.mode, els.url, els.key, els.model, els.prompt, els.ttsUrl, els.ttsKey, els.ttsModel, els.ttsVoice, els.ttsPrompt].forEach((el) => ["input", "change"].forEach((evt) => el.addEventListener(evt, persistSettings)));
   els.ttsAuto.addEventListener("change", persistSettings);
 }
 function persistSettings() {
@@ -290,7 +297,7 @@ function persistSettings() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       clip: els.clip.value, format: els.format.value, mode: els.mode.value, url: els.url.value, key: els.key.value,
       model: els.model.value, prompt: els.prompt.value, ttsUrl: els.ttsUrl.value, ttsKey: els.ttsKey.value,
-      ttsModel: els.ttsModel.value, ttsVoice: els.ttsVoice.value, ttsAuto: els.ttsAuto.checked
+      ttsModel: els.ttsModel.value, ttsVoice: els.ttsVoice.value, ttsPrompt: els.ttsPrompt.value, ttsAuto: els.ttsAuto.checked
     }));
   } catch {}
 }
