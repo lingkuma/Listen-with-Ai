@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Listen with AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="page">
+    <section class="hero card dark">
+      <div>
+        <p class="eyebrow">Listen with AI</p>
+        <h1>进入页面后自动录音，随时把最近一段播客交给 AI 解析。</h1>
+        <p class="lead">页面加载即申请麦克风权限并开始录音。系统只保留最近 20 秒缓存，旧音频会立即丢弃，避免浏览器内存持续膨胀。</p>
+      </div>
+      <div class="hero-meta">
+        <div>
+          <span>录音状态</span>
+          <strong id="recordingStatus">准备中…</strong>
+        </div>
+        <div>
+          <span>缓存窗口</span>
+          <strong id="bufferStatus">0 / 20 秒</strong>
+        </div>
+        <div>
+          <span>当前循环</span>
+          <strong id="cycleStatus">--</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <div class="section-head">
+          <p class="eyebrow">01 音频录制</p>
+          <h2>自动连续录制</h2>
+        </div>
+        <p class="muted">采用 20 秒一轮的循环录制；内部仅保留最近 20 个 1 秒切片，用于拼接发送片段。</p>
+        <div class="pill-row">
+          <span class="pill" id="mimeLabel">格式检测中</span>
+          <span class="pill">自动开始</span>
+          <span class="pill">超出缓存立即丢弃</span>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="section-head">
+          <p class="eyebrow">02 区间设置</p>
+          <h2>选择最近几秒</h2>
+        </div>
+        <label>发送最近音频区间（秒）
+          <select id="clipSeconds">
+            <option>5</option><option>10</option><option>15</option><option selected>20</option>
+          </select>
+        </label>
+        <label>导出格式
+          <select id="audioFormat">
+            <option value="webm" selected>WebM（推荐）</option>
+            <option value="wav">WAV（兼容更广）</option>
+            <option value="mp3">MP3（若浏览器不支持会回退）</option>
+          </select>
+        </label>
+      </article>
+
+      <article class="card">
+        <div class="section-head">
+          <p class="eyebrow">03 AI 参数设置</p>
+          <h2>自定义 AI 入口</h2>
+        </div>
+        <label>请求模式
+          <select id="apiMode">
+            <option value="chat" selected>Chat Companion</option>
+            <option value="responses">OpenAI Responses</option>
+            <option value="multipart">Multipart 上传</option>
+          </select>
+        </label>
+        <label>URL <input id="apiUrl" value="https://api.0-0.pro/v1/chat/completions" /></label>
+        <label>API Key <input id="apiKey" type="password" placeholder="sk-..." /></label>
+        <label>模型 <input id="apiModel" value="gemini-2.5-flash" /></label>
+        <label>提示词
+          <textarea id="promptInput">用户正在通过博客学习新语言，请回答用户的问题，帮助用户理解博客的内容。</textarea>
+        </label>
+      </article>
+
+      <article class="card output-card">
+        <div class="section-head">
+          <p class="eyebrow">04 AI 解析输出</p>
+          <h2>结果面板</h2>
+        </div>
+        <pre id="resultOutput">等待发送音频…</pre>
+      </article>
+    </section>
+
+    <section class="action-bar card">
+      <div>
+        <p class="eyebrow">05 发送按钮</p>
+        <h2>把最近缓存片段发送给 AI</h2>
+      </div>
+      <button id="sendButton" type="button">发送最近片段</button>
+    </section>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
