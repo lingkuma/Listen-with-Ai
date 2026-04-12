@@ -227,6 +227,47 @@ textarea { min-height: 120px; resize: vertical; }
   font-size: 20px;
   flex: 0 0 auto;
 }
+.result-frame {
+  position: relative;
+  border-radius: 22px;
+  padding: 2px;
+  overflow: hidden;
+  isolation: isolate;
+}
+.result-frame::before {
+  content: "";
+  position: absolute;
+  inset: -55%;
+  z-index: 0;
+  opacity: 0;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgba(201, 100, 66, 0.08) 110deg,
+    rgba(201, 100, 66, 0.82) 170deg,
+    rgba(240, 187, 122, 0.95) 214deg,
+    rgba(201, 100, 66, 0.16) 255deg,
+    transparent 320deg
+  );
+  transition: opacity 0.24s ease;
+  will-change: transform;
+}
+.result-frame::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  z-index: 1;
+  border-radius: 18px;
+  background: #f1eee5;
+  border: 1px solid var(--line);
+}
+.result-frame > pre {
+  position: relative;
+  z-index: 2;
+  background: transparent;
+  border: none;
+}
+
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -336,6 +377,13 @@ body[data-mic-state="error"] .wave-bars span {
 body[data-send-state="sending"] .mic-core {
   background: linear-gradient(180deg, #d98b44, #c96a25);
 }
+body[data-send-state="sending"] .result-frame {
+  box-shadow: 0 16px 34px rgba(201, 100, 66, 0.16);
+}
+body[data-send-state="sending"] .result-frame::before {
+  opacity: 1;
+  animation: resultOrbit 2.4s linear infinite;
+}
 @keyframes pulseRing {
   0% { transform: scale(0.82); opacity: 0.72; }
   70% { transform: scale(1.28); opacity: 0; }
@@ -344,6 +392,10 @@ body[data-send-state="sending"] .mic-core {
 @keyframes waveBounce {
   0%, 100% { transform: scaleY(0.45); opacity: 0.45; }
   50% { transform: scaleY(1); opacity: 1; }
+}
+@keyframes resultOrbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 @media (max-width: 900px) {
   .top-grid,
