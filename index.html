@@ -38,7 +38,16 @@
           <button id="sendButton" class="send-inline" type="button">发送最近片段</button>
         </div>
 
-        <pre id="resultOutput">等待发送音频…</pre>
+        <section class="result-panel" aria-label="AI 回复结果">
+          <div class="result-head">
+            <div>
+              <p class="eyebrow">AI 回复</p>
+              <span class="hint">支持手动播放 TTS，自动播放会复用本地临时缓存。</span>
+            </div>
+            <button id="ttsButton" class="icon-button" type="button" aria-label="播放 AI 回复语音" title="播放 AI 回复语音" disabled>🔊</button>
+          </div>
+          <pre id="resultOutput">等待发送音频…</pre>
+        </section>
       </article>
     </section>
 
@@ -64,6 +73,7 @@
           </div>
         </div>
       </section>
+
       <article class="card">
         <div class="section-head">
           <p class="eyebrow">02 音频录制</p>
@@ -113,6 +123,23 @@
         <label>模型 <input id="apiModel" value="gemini-2.5-flash" /></label>
         <label>提示词
           <textarea id="promptInput">用户正在通过博客学习新语言，请回答用户的问题，帮助用户理解博客的内容。</textarea>
+        </label>
+      </article>
+
+      <article class="card hero-inline">
+        <div class="section-head">
+          <p class="eyebrow">05 TTS 配置</p>
+          <h2>底部自定义语音栏</h2>
+        </div>
+        <div class="settings-grid">
+          <label>TTS URL <input id="ttsUrl" value="https://api.0-0.pro/v1/chat/completions" /></label>
+          <label>TTS API Key <input id="ttsKey" type="password" placeholder="留空则复用上方 API Key" /></label>
+          <label>TTS 模型 <input id="ttsModel" value="gemini-2.5-flash-preview-tts" /></label>
+          <label>音色 Voice <input id="ttsVoice" value="Zephyr" /></label>
+        </div>
+        <label class="switch-row">
+          <span>是否自动播放 TTS</span>
+          <input id="ttsAutoPlay" type="checkbox" />
         </label>
       </article>
     </section>

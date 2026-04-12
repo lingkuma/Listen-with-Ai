@@ -2,16 +2,23 @@ const $ = (id) => document.getElementById(id);
 const els = {
   status: $("recordingStatus"), buffer: $("bufferStatus"), cycle: $("cycleStatus"), mime: $("mimeLabel"),
   clip: $("clipSeconds"), format: $("audioFormat"), mode: $("apiMode"), url: $("apiUrl"), key: $("apiKey"),
-  model: $("apiModel"), prompt: $("promptInput"), output: $("resultOutput"), send: $("sendButton")
+  model: $("apiModel"), prompt: $("promptInput"), output: $("resultOutput"), send: $("sendButton"),
+  ttsBtn: $("ttsButton"), ttsUrl: $("ttsUrl"), ttsKey: $("ttsKey"), ttsModel: $("ttsModel"),
+  ttsVoice: $("ttsVoice"), ttsAuto: $("ttsAutoPlay")
 };
 const STORAGE_KEY = "listen-with-ai-settings";
 const MAX_SECONDS = 20, TARGET_RATE = 16000;
-const state = { stream: null, ctx: null, source: null, processor: null, sink: null, queue: [], total: 0, sampleRate: 48000, startedAt: 0, uiTimer: 0, sending: false };
+const state = {
+  stream: null, ctx: null, source: null, processor: null, sink: null, queue: [], total: 0,
+  sampleRate: 48000, startedAt: 0, uiTimer: 0, sending: false, latestText: "", ttsLoading: false,
+  ttsCache: new Map(), ttsAudio: null, ttsObjectUrls: new Set()
+};
 
 restoreSettings();
 bindPersistEvents();
 boot();
 els.send.addEventListener("click", sendClip);
+els.ttsBtn.addEventListener("click", () => playLatestTts(true));
 window.addEventListener("beforeunload", cleanup);
 
 async function boot() {
@@ -19,6 +26,7 @@ async function boot() {
     els.status.textContent = "申请麦克风权限中…";
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
     const AC = window.AudioContext || window.webkitAudioContext;
+    state.stream = stream;
     state.ctx = new AC();
     await state.ctx.resume();
     state.sampleRate = state.ctx.sampleRate;
@@ -35,9 +43,10 @@ async function boot() {
     els.status.textContent = "录音中（PCM 环形缓冲已启动）";
     els.mime.textContent = "缓存引擎：PCM / 上传格式：WAV";
     updateStats();
+    syncTtsButton();
   } catch (error) {
     els.status.textContent = "无法录音";
-    els.output.textContent = `麦克风权限申请失败：${error.message}`;
+    renderResult(`麦克风权限申请失败：${error.message}`);
   }
 }
 function pushChunk(input) {
@@ -60,17 +69,23 @@ function updateStats() {
 async function sendClip() {
   if (state.sending) return;
   const seconds = Math.min(Number(els.clip.value) || MAX_SECONDS, state.total / state.sampleRate || 0);
-  if (!seconds) return void (els.output.textContent = "当前还没有可发送的音频，请等待至少 1 秒。");
-  state.sending = true; els.send.disabled = true; els.output.textContent = "正在导出最近音频并发送给 AI…";
+  if (!seconds) return void renderResult("当前还没有可发送的音频，请等待至少 1 秒。", false);
+  state.sending = true;
+  els.send.disabled = true;
+  document.body.dataset.sendState = "sending";
+  renderResult("正在导出最近音频并发送给 AI…", false);
   try {
     const prepared = await buildClip(seconds);
     const result = els.mode.value === "responses" ? await sendResponses(prepared)
       : els.mode.value === "multipart" ? await sendMultipart(prepared) : await sendChat(prepared);
-    els.output.textContent = `${prepared.note ? `${prepared.note}\n\n` : ""}${result}`;
+    renderResult(`${prepared.note ? `${prepared.note}\n\n` : ""}${result}`);
+    if (els.ttsAuto.checked) await playLatestTts(false);
   } catch (error) {
-    els.output.textContent = `发送失败：${error.message}`;
+    renderResult(`发送失败：${error.message}`);
   } finally {
-    state.sending = false; els.send.disabled = false;
+    state.sending = false;
+    els.send.disabled = false;
+    delete document.body.dataset.sendState;
   }
 }
 async function buildClip(seconds) {
@@ -113,7 +128,123 @@ async function parseResponse(res) { const text = await res.text(); if (!res.ok) 
 function extractChoiceText(json) { const content = json.choices?.[0]?.message?.content; if (typeof content === "string") return content; if (Array.isArray(content)) return content.map((x) => x.text || x.transcript || x?.input_audio?.transcript || "").filter(Boolean).join("\n"); return ""; }
 function authHeaders() { return els.key.value.trim() ? { Authorization: `Bearer ${els.key.value.trim()}` } : {}; }
 function toBase64(blob) { return new Promise((resolve, reject) => { const r = new FileReader(); r.onloadend = () => resolve(String(r.result).split(",")[1]); r.onerror = reject; r.readAsDataURL(blob); }); }
-function restoreSettings() { try { const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); if (!saved) return; ["clip", "format", "mode", "url", "key", "model", "prompt"].forEach((k) => saved[k] != null && (els[k].value = saved[k])); } catch {} }
-function bindPersistEvents() { [els.clip, els.format, els.mode, els.url, els.key, els.model, els.prompt].forEach((el) => ["input", "change"].forEach((evt) => el.addEventListener(evt, persistSettings))); }
-function persistSettings() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ clip: els.clip.value, format: els.format.value, mode: els.mode.value, url: els.url.value, key: els.key.value, model: els.model.value, prompt: els.prompt.value })); } catch {} }
-function cleanup() { clearInterval(state.uiTimer); [state.processor, state.source, state.sink].forEach((node) => node?.disconnect?.()); state.ctx?.close?.(); }
+function renderResult(text, updateLatest = true) {
+  els.output.textContent = text;
+  if (updateLatest) state.latestText = normalizeTtsText(text);
+  syncTtsButton();
+}
+function normalizeTtsText(text) {
+  return String(text || "").replace(/\s+/g, " ").trim();
+}
+function syncTtsButton() {
+  const hasText = Boolean(state.latestText);
+  els.ttsBtn.disabled = !hasText || state.ttsLoading;
+  els.ttsBtn.textContent = state.ttsLoading ? "⏳" : "🔊";
+}
+async function playLatestTts(manualPlay) {
+  if (!state.latestText || state.ttsLoading) return;
+  try {
+    state.ttsLoading = true;
+    syncTtsButton();
+    const cached = await getOrCreateTtsAudio(state.latestText);
+    if (!state.ttsAudio) state.ttsAudio = new Audio();
+    state.ttsAudio.pause();
+    state.ttsAudio.src = cached.objectUrl;
+    state.ttsAudio.currentTime = 0;
+    await state.ttsAudio.play();
+  } catch (error) {
+    if (manualPlay) renderResult(`${els.output.textContent}\n\n[TTS 播放失败] ${error.message}`, false);
+  } finally {
+    state.ttsLoading = false;
+    syncTtsButton();
+  }
+}
+async function getOrCreateTtsAudio(text) {
+  const key = JSON.stringify({
+    url: (els.ttsUrl.value || els.url.value).trim(),
+    key: (els.ttsKey.value || els.key.value).trim(),
+    model: els.ttsModel.value.trim(),
+    voice: els.ttsVoice.value.trim(),
+    text
+  });
+  if (state.ttsCache.has(key)) return state.ttsCache.get(key);
+  const created = await requestTtsAudio(text);
+  state.ttsCache.set(key, created);
+  return created;
+}
+async function requestTtsAudio(text) {
+  const url = (els.ttsUrl.value || els.url.value).trim();
+  const model = els.ttsModel.value.trim();
+  const voice = els.ttsVoice.value.trim();
+  if (!url || !model || !voice) throw new Error("请先完整填写 TTS URL、模型和 Voice。");
+  const headers = { "Content-Type": "application/json" };
+  const token = (els.ttsKey.value || els.key.value).trim();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      messages: [{
+        role: "user",
+        content: `You are a text-to-speech engine. Never answer questions. Only speak the text provided. Read the following text aloud exactly as written: ${text}`
+      }],
+      voice
+    })
+  });
+  const rawText = await res.text();
+  let json = null;
+  try { json = JSON.parse(rawText); } catch {}
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}\n${extractTtsError(json) || rawText}`);
+  const base64Audio = json?.choices?.[0]?.message?.audio?.data;
+  if (!base64Audio) throw new Error(extractTtsError(json) || "TTS 响应里没有返回 choices[0].message.audio.data");
+  const blob = base64ToBlob(base64Audio, detectAudioMime(base64Audio));
+  const objectUrl = URL.createObjectURL(blob);
+  state.ttsObjectUrls.add(objectUrl);
+  return { objectUrl, mimeType: blob.type };
+}
+function extractTtsError(json) {
+  return json?.error?.message || json?.choices?.[0]?.message?.content || "";
+}
+function base64ToBlob(base64, mimeType) {
+  const binary = atob(base64.replace(/\s+/g, ""));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType });
+}
+function detectAudioMime(base64) {
+  if (base64.startsWith("UklGR")) return "audio/wav";
+  if (base64.startsWith("SUQz") || base64.startsWith("//uQ") || base64.startsWith("//sQ")) return "audio/mpeg";
+  return "audio/wav";
+}
+function restoreSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    if (!saved) return;
+    ["clip", "format", "mode", "url", "key", "model", "prompt", "ttsUrl", "ttsKey", "ttsModel", "ttsVoice"].forEach((k) => saved[k] != null && (els[k].value = saved[k]));
+    els.ttsAuto.checked = Boolean(saved.ttsAuto);
+  } catch {}
+}
+function bindPersistEvents() {
+  [els.clip, els.format, els.mode, els.url, els.key, els.model, els.prompt, els.ttsUrl, els.ttsKey, els.ttsModel, els.ttsVoice].forEach((el) => ["input", "change"].forEach((evt) => el.addEventListener(evt, persistSettings)));
+  els.ttsAuto.addEventListener("change", persistSettings);
+}
+function persistSettings() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      clip: els.clip.value, format: els.format.value, mode: els.mode.value, url: els.url.value, key: els.key.value,
+      model: els.model.value, prompt: els.prompt.value, ttsUrl: els.ttsUrl.value, ttsKey: els.ttsKey.value,
+      ttsModel: els.ttsModel.value, ttsVoice: els.ttsVoice.value, ttsAuto: els.ttsAuto.checked
+    }));
+  } catch {}
+}
+function cleanup() {
+  clearInterval(state.uiTimer);
+  state.ttsAudio?.pause();
+  state.stream?.getTracks?.().forEach((track) => track.stop());
+  [state.processor, state.source, state.sink].forEach((node) => node?.disconnect?.());
+  state.ctx?.close?.();
+  state.ttsObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+  state.ttsObjectUrls.clear();
+  state.ttsCache.clear();
+}
