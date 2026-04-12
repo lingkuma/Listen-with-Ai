@@ -10,7 +10,7 @@ const STORAGE_KEY = "listen-with-ai-settings";
 const MAX_SECONDS = 20, TARGET_RATE = 16000;
 const state = {
   stream: null, ctx: null, source: null, processor: null, sink: null, queue: [], total: 0,
-  sampleRate: 48000, startedAt: 0, uiTimer: 0, sending: false, latestText: "", ttsLoading: false,
+  sampleRate: 48000, startedAt: 0, uiTimer: 0, sending: false, latestText: "",
   ttsCache: new Map(), ttsAudio: null, ttsObjectUrls: new Set()
 };
 
@@ -137,26 +137,20 @@ function normalizeTtsText(text) {
   return String(text || "").replace(/\s+/g, " ").trim();
 }
 function syncTtsButton() {
-  const hasText = Boolean(state.latestText);
-  els.ttsBtn.disabled = !hasText || state.ttsLoading;
-  els.ttsBtn.textContent = state.ttsLoading ? "⏳" : "🔊";
+  els.ttsBtn.disabled = !state.latestText;
+  els.ttsBtn.textContent = "🔊";
 }
 async function playLatestTts(manualPlay) {
-  if (!state.latestText || state.ttsLoading) return;
+  if (!state.latestText) return;
   try {
-    state.ttsLoading = true;
-    syncTtsButton();
-    const cached = await getOrCreateTtsAudio(state.latestText);
+    const audioSource = manualPlay ? await requestTtsAudio(state.latestText) : await getOrCreateTtsAudio(state.latestText);
     if (!state.ttsAudio) state.ttsAudio = new Audio();
     state.ttsAudio.pause();
-    state.ttsAudio.src = cached.objectUrl;
+    state.ttsAudio.src = audioSource.objectUrl;
     state.ttsAudio.currentTime = 0;
     await state.ttsAudio.play();
   } catch (error) {
     if (manualPlay) renderResult(`${els.output.textContent}\n\n[TTS 播放失败] ${error.message}`, false);
-  } finally {
-    state.ttsLoading = false;
-    syncTtsButton();
   }
 }
 async function getOrCreateTtsAudio(text) {
