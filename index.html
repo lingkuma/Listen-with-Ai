@@ -67,16 +67,12 @@
         </div>
         <div class="hero-meta">
           <div>
-            <span>缓存窗口</span>
-            <strong id="bufferStatus">0 / 60 秒</strong>
+            <span>范围</span>
+            <strong id="rangeStatus">最近 20 秒</strong>
           </div>
           <div>
-            <span>当前循环</span>
-            <strong id="cycleStatus">--</strong>
-          </div>
-          <div>
-            <span>工作方式</span>
-            <strong>进入页面后自动录音</strong>
+            <span>缓存上限</span>
+            <strong id="bufferStatus">60 秒</strong>
           </div>
         </div>
       </section>
@@ -86,7 +82,7 @@
           <p class="eyebrow">02 音频录制</p>
           <h2>自动连续录制</h2>
         </div>
-        <p class="muted">内部改为 PCM 环形缓冲，默认发送 20 秒，但底层会保留最近 60 秒原始音频；发送时再导出完整 WAV，避免分段拼接导致后续请求失效。</p>
+        <p class="muted">内部改为 PCM 环形缓冲，底层始终保留最近 60 秒原始音频；你点击发送时，再按当前选择导出最近 20 / 30 / 60 秒等区间的完整 WAV，避免分段拼接导致后续请求失效。</p>
         <div class="pill-row">
           <span class="pill">自动开始</span>
           <span class="pill">超出缓存立即丢弃</span>
@@ -160,6 +156,6 @@
       </article>
     </section>
   </main>
-  <script type="module" src="app-main.js"></script>
+  <script type="module" src="app-main.js?v=range-buffer-v2"></script>
 </body>
 </html>

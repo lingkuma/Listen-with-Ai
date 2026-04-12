@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const els = {
-  status: $("recordingStatus"), buffer: $("bufferStatus"), cycle: $("cycleStatus"), mime: $("mimeLabel"),
+  status: $("recordingStatus"), buffer: $("bufferStatus"), range: $("rangeStatus"), mime: $("mimeLabel"),
   clip: $("clipSeconds"), format: $("audioFormat"), mode: $("apiMode"), url: $("apiUrl"), key: $("apiKey"),
   model: $("apiModel"), prompt: $("promptInput"), output: $("resultOutput"), send: $("sendButton"),
   ttsBtn: $("ttsButton"), ttsUrl: $("ttsUrl"), ttsKey: $("ttsKey"), ttsModel: $("ttsModel"),
@@ -64,10 +64,9 @@ function pushChunk(input) {
   }
 }
 function updateStats() {
-  const buffered = Math.min(MAX_SECONDS, state.total / state.sampleRate || 0);
-  const cycle = Math.floor(((Date.now() - state.startedAt) / 1000) / MAX_SECONDS) + 1;
-  els.buffer.textContent = `${buffered.toFixed(1)} / ${MAX_SECONDS} 秒`;
-  els.cycle.textContent = `第 ${cycle} 轮 / ${MAX_SECONDS} 秒窗口`;
+  const selectedSeconds = Number(els.clip.value) || 20;
+  els.buffer.textContent = `${MAX_SECONDS} 秒`;
+  els.range.textContent = `最近 ${selectedSeconds} 秒`;
 }
 async function sendClip() {
   if (state.sending) return;
