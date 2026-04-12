@@ -42,9 +42,16 @@
           <div class="result-head">
             <div>
               <p class="eyebrow">AI 回复</p>
-              <span class="hint">支持手动播放 TTS，自动播放会复用本地临时缓存。</span>
+              <span class="hint">点击右上角按钮生成语音；生成后会在回答框顶部显示可拖拽进度的播放器，并优先复用本地缓存。</span>
             </div>
-            <button id="ttsButton" class="icon-button" type="button" aria-label="播放 AI 回复语音" title="播放 AI 回复语音" disabled>🔊</button>
+            <button id="ttsButton" class="icon-button" type="button" aria-label="生成 AI 回复语音" title="生成 AI 回复语音" disabled>🔊</button>
+          </div>
+          <div id="ttsPlayerWrap" class="tts-player" hidden>
+            <div class="tts-player-head">
+              <strong>TTS 播放器</strong>
+              <span id="ttsPlayerMeta" class="tts-player-meta">点击右上角按钮生成语音后，这里会出现播放器。</span>
+            </div>
+            <audio id="ttsPlayer" controls preload="metadata"></audio>
           </div>
           <pre id="resultOutput">等待发送音频…</pre>
         </section>

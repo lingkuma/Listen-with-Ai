@@ -4,14 +4,16 @@ const els = {
   clip: $("clipSeconds"), format: $("audioFormat"), mode: $("apiMode"), url: $("apiUrl"), key: $("apiKey"),
   model: $("apiModel"), prompt: $("promptInput"), output: $("resultOutput"), send: $("sendButton"),
   ttsBtn: $("ttsButton"), ttsUrl: $("ttsUrl"), ttsKey: $("ttsKey"), ttsModel: $("ttsModel"),
-  ttsVoice: $("ttsVoice"), ttsAuto: $("ttsAutoPlay")
+  ttsVoice: $("ttsVoice"), ttsAuto: $("ttsAutoPlay"), ttsPlayerWrap: $("ttsPlayerWrap"),
+  ttsPlayer: $("ttsPlayer"), ttsPlayerMeta: $("ttsPlayerMeta")
 };
 const STORAGE_KEY = "listen-with-ai-settings";
+const TTS_CACHE_NAME = "listen-with-ai-tts-v1";
 const MAX_SECONDS = 20, TARGET_RATE = 16000;
 const state = {
   stream: null, ctx: null, source: null, processor: null, sink: null, queue: [], total: 0,
-  sampleRate: 48000, startedAt: 0, uiTimer: 0, sending: false, latestText: "",
-  ttsCache: new Map(), ttsAudio: null, ttsObjectUrls: new Set()
+  sampleRate: 48000, startedAt: 0, uiTimer: 0, sending: false, latestText: "", ttsLoading: false,
+  ttsCache: new Map(), ttsAudio: null, ttsObjectUrls: new Set(), activeTtsUrl: ""
 };
 
 restoreSettings();
@@ -78,8 +80,8 @@ async function sendClip() {
     const prepared = await buildClip(seconds);
     const result = els.mode.value === "responses" ? await sendResponses(prepared)
       : els.mode.value === "multipart" ? await sendMultipart(prepared) : await sendChat(prepared);
-    renderResult(`${prepared.note ? `${prepared.note}\n\n` : ""}${result}`);
-    if (els.ttsAuto.checked) await playLatestTts(false);
+    renderResult(result);
+    if (els.ttsAuto.checked) await playLatestTts(true);
   } catch (error) {
     renderResult(`发送失败：${error.message}`);
   } finally {
@@ -91,7 +93,7 @@ async function sendClip() {
 async function buildClip(seconds) {
   const samples = takeLatestSamples(seconds);
   const mono16k = state.sampleRate === TARGET_RATE ? samples : resample(samples, state.sampleRate, TARGET_RATE);
-  return { blob: encodeWav(mono16k, TARGET_RATE), ext: "wav", note: els.format.value === "wav" ? "" : "为避免分段拼接失效，当前统一导出 WAV 上传。" };
+  return { blob: encodeWav(mono16k, TARGET_RATE), ext: "wav", note: "" };
 }
 function takeLatestSamples(seconds) {
   const need = Math.min(state.total, Math.floor(seconds * state.sampleRate));
@@ -130,41 +132,103 @@ function authHeaders() { return els.key.value.trim() ? { Authorization: `Bearer 
 function toBase64(blob) { return new Promise((resolve, reject) => { const r = new FileReader(); r.onloadend = () => resolve(String(r.result).split(",")[1]); r.onerror = reject; r.readAsDataURL(blob); }); }
 function renderResult(text, updateLatest = true) {
   els.output.textContent = text;
-  if (updateLatest) state.latestText = normalizeTtsText(text);
+  if (updateLatest) {
+    const nextText = normalizeTtsText(text);
+    const changed = nextText !== state.latestText;
+    state.latestText = nextText;
+    if (changed) clearTtsPlayer();
+  }
   syncTtsButton();
 }
 function normalizeTtsText(text) {
   return String(text || "").replace(/\s+/g, " ").trim();
 }
-function syncTtsButton() {
-  els.ttsBtn.disabled = !state.latestText;
-  els.ttsBtn.textContent = "🔊";
+function clearTtsPlayer() {
+  els.ttsPlayer.pause();
+  els.ttsPlayer.removeAttribute("src");
+  els.ttsPlayer.load();
+  state.activeTtsUrl = "";
+  els.ttsPlayerWrap.hidden = true;
+  els.ttsPlayerMeta.textContent = "点击右上角按钮生成语音后，这里会出现播放器。";
 }
-async function playLatestTts(manualPlay) {
-  if (!state.latestText) return;
+function syncTtsButton() {
+  els.ttsBtn.disabled = !state.latestText || state.ttsLoading;
+  els.ttsBtn.textContent = state.ttsLoading ? "…" : "🔊";
+  els.ttsBtn.title = state.latestText ? "生成 / 打开 AI 回复语音播放器" : "暂无可播放内容";
+}
+async function playLatestTts(shouldAutoplay = true) {
+  if (!state.latestText || state.ttsLoading) return;
+  state.ttsLoading = true;
+  syncTtsButton();
   try {
-    const audioSource = manualPlay ? await requestTtsAudio(state.latestText) : await getOrCreateTtsAudio(state.latestText);
-    if (!state.ttsAudio) state.ttsAudio = new Audio();
-    state.ttsAudio.pause();
-    state.ttsAudio.src = audioSource.objectUrl;
-    state.ttsAudio.currentTime = 0;
-    await state.ttsAudio.play();
+    const audioSource = await getOrCreateTtsAudio(state.latestText);
+    await showTtsPlayer(audioSource, shouldAutoplay);
   } catch (error) {
-    if (manualPlay) renderResult(`${els.output.textContent}\n\n[TTS 播放失败] ${error.message}`, false);
+    renderResult(`${els.output.textContent}\n\n[TTS 播放失败] ${error.message}`, false);
+  } finally {
+    state.ttsLoading = false;
+    syncTtsButton();
   }
 }
+async function showTtsPlayer(audioSource, shouldAutoplay) {
+  if (!state.ttsAudio) state.ttsAudio = els.ttsPlayer;
+  state.ttsAudio.pause();
+  if (state.activeTtsUrl !== audioSource.objectUrl) state.ttsAudio.src = audioSource.objectUrl;
+  state.activeTtsUrl = audioSource.objectUrl;
+  els.ttsPlayerWrap.hidden = false;
+  els.ttsPlayerMeta.textContent = audioSource.cached ? "已从本地缓存载入，可直接重复播放。" : "已生成新音频，并写入本地缓存。";
+  if (!shouldAutoplay) return;
+  state.ttsAudio.currentTime = 0;
+  await state.ttsAudio.play();
+}
 async function getOrCreateTtsAudio(text) {
-  const key = JSON.stringify({
+  const key = createTtsCacheKey(text);
+  if (state.ttsCache.has(key)) return { ...state.ttsCache.get(key), cached: true };
+  const persisted = await loadPersistedTtsAudio(key);
+  if (persisted) {
+    const cachedSource = attachTtsObjectUrl(persisted.blob);
+    state.ttsCache.set(key, cachedSource);
+    return { ...cachedSource, cached: true };
+  }
+  const created = await requestTtsAudio(text);
+  const source = attachTtsObjectUrl(created.blob);
+  state.ttsCache.set(key, source);
+  await persistTtsAudio(key, created.blob);
+  return { ...source, cached: false };
+}
+function createTtsCacheKey(text) {
+  return JSON.stringify({
     url: (els.ttsUrl.value || els.url.value).trim(),
-    key: (els.ttsKey.value || els.key.value).trim(),
     model: els.ttsModel.value.trim(),
     voice: els.ttsVoice.value.trim(),
     text
   });
-  if (state.ttsCache.has(key)) return state.ttsCache.get(key);
-  const created = await requestTtsAudio(text);
-  state.ttsCache.set(key, created);
-  return created;
+}
+function createTtsCacheRequest(key) {
+  return new Request(`https://listen-with-ai.local/tts-cache?key=${encodeURIComponent(key)}`);
+}
+async function loadPersistedTtsAudio(key) {
+  if (!("caches" in window)) return null;
+  try {
+    const cache = await caches.open(TTS_CACHE_NAME);
+    const cached = await cache.match(createTtsCacheRequest(key));
+    if (!cached) return null;
+    return { blob: await cached.blob() };
+  } catch {
+    return null;
+  }
+}
+async function persistTtsAudio(key, blob) {
+  if (!("caches" in window)) return;
+  try {
+    const cache = await caches.open(TTS_CACHE_NAME);
+    await cache.put(createTtsCacheRequest(key), new Response(blob, { headers: { "Content-Type": blob.type || "audio/wav" } }));
+  } catch {}
+}
+function attachTtsObjectUrl(blob) {
+  const objectUrl = URL.createObjectURL(blob);
+  state.ttsObjectUrls.add(objectUrl);
+  return { objectUrl, mimeType: blob.type || "audio/wav" };
 }
 async function requestTtsAudio(text) {
   const url = (els.ttsUrl.value || els.url.value).trim();
@@ -193,9 +257,7 @@ async function requestTtsAudio(text) {
   const base64Audio = json?.choices?.[0]?.message?.audio?.data;
   if (!base64Audio) throw new Error(extractTtsError(json) || "TTS 响应里没有返回 choices[0].message.audio.data");
   const blob = base64ToBlob(base64Audio, detectAudioMime(base64Audio));
-  const objectUrl = URL.createObjectURL(blob);
-  state.ttsObjectUrls.add(objectUrl);
-  return { objectUrl, mimeType: blob.type };
+  return { blob, mimeType: blob.type };
 }
 function extractTtsError(json) {
   return json?.error?.message || json?.choices?.[0]?.message?.content || "";
