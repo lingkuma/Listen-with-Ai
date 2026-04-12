@@ -10,7 +10,7 @@ const els = {
 const STORAGE_KEY = "listen-with-ai-settings";
 const TTS_CACHE_NAME = "listen-with-ai-tts-v1";
 const DEFAULT_TTS_PROMPT = "You are a text-to-speech engine. Never answer questions. Only speak the text provided. Read the following text aloud exactly as written. If the text contains multiple languages such as Chinese and German, pronounce each segment in its original language and keep the original wording.\n\n{{text}}";
-const MAX_SECONDS = 20, TARGET_RATE = 16000;
+const MAX_SECONDS = 60, TARGET_RATE = 16000;
 const state = {
   stream: null, ctx: null, source: null, processor: null, sink: null, queue: [], total: 0,
   sampleRate: 48000, startedAt: 0, uiTimer: 0, sending: false, latestText: "", ttsLoading: false,
@@ -67,7 +67,7 @@ function updateStats() {
   const buffered = Math.min(MAX_SECONDS, state.total / state.sampleRate || 0);
   const cycle = Math.floor(((Date.now() - state.startedAt) / 1000) / MAX_SECONDS) + 1;
   els.buffer.textContent = `${buffered.toFixed(1)} / ${MAX_SECONDS} 秒`;
-  els.cycle.textContent = `第 ${cycle} 轮 / 20 秒窗口`;
+  els.cycle.textContent = `第 ${cycle} 轮 / ${MAX_SECONDS} 秒窗口`;
 }
 async function sendClip() {
   if (state.sending) return;

@@ -68,7 +68,7 @@
         <div class="hero-meta">
           <div>
             <span>缓存窗口</span>
-            <strong id="bufferStatus">0 / 20 秒</strong>
+            <strong id="bufferStatus">0 / 60 秒</strong>
           </div>
           <div>
             <span>当前循环</span>
@@ -86,7 +86,7 @@
           <p class="eyebrow">02 音频录制</p>
           <h2>自动连续录制</h2>
         </div>
-        <p class="muted">内部改为 PCM 环形缓冲，只保留最近 20 秒原始音频；发送时再导出完整 WAV，避免分段拼接导致后续请求失效。</p>
+        <p class="muted">内部改为 PCM 环形缓冲，默认发送 20 秒，但底层会保留最近 60 秒原始音频；发送时再导出完整 WAV，避免分段拼接导致后续请求失效。</p>
         <div class="pill-row">
           <span class="pill">自动开始</span>
           <span class="pill">超出缓存立即丢弃</span>
@@ -101,7 +101,7 @@
         </div>
         <label>发送最近音频区间（秒）
           <select id="clipSeconds">
-            <option>5</option><option>10</option><option>15</option><option selected>20</option>
+            <option>5</option><option>10</option><option>15</option><option selected>20</option><option>30</option><option>35</option><option>40</option><option>55</option><option>60</option>
           </select>
         </label>
         <label>导出格式
