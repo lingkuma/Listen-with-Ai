@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Listen with AI</title>
+  <title>Listen with AI | 播客听力录音助手</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -15,9 +15,9 @@
       <article class="card output-stage">
         <div class="stage-head">
           <div>
-            <p class="eyebrow">01 实时解析</p>
-            <h1>把最近缓存片段发送给 AI</h1>
-            <p class="muted">把功能区前置：发送按钮和 AI 反馈都放在最上面，用户进入页面后第一眼就能看到操作入口与结果。</p>
+            <p class="eyebrow">01 核心动作</p>
+            <h1>录下播客和你的声音，直接发送给 AI</h1>
+            <p class="muted">这个网站的主旨很简单：把播客里你听到的声音，以及你自己的跟读、复述或提问一起录下来，直接发给 AI，然后获得一个结果。</p>
           </div>
         </div>
 
@@ -28,33 +28,33 @@
             <span class="mic-core">🎙</span>
           </div>
           <div class="live-copy">
-            <p class="eyebrow">麦克风监听中</p>
+            <p class="eyebrow">持续录音中</p>
             <strong id="recordingStatus">准备中…</strong>
-            <span id="mimeLabel" class="pill subtle-pill">缓存引擎准备中</span>
+            <span id="mimeLabel" class="pill subtle-pill">正在准备最近声音缓存</span>
           </div>
           <div class="wave-bars" aria-hidden="true">
             <span></span><span></span><span></span><span></span><span></span>
           </div>
-          <button id="sendButton" class="send-inline" type="button">发送最近片段</button>
+          <button id="sendButton" class="send-inline" type="button">发送这段声音给 AI</button>
         </div>
 
         <section class="result-panel" aria-label="AI 回复结果">
           <div class="result-head">
             <div>
-              <p class="eyebrow">AI 回复</p>
-              <span class="hint">点击右上角按钮生成语音；生成后会在回答框顶部显示可拖拽进度的播放器，并优先复用本地缓存。</span>
+              <p class="eyebrow">AI 结果</p>
+              <span class="hint">发送后会有一点等待时间，这段时间正适合你继续重复听刚才那一段，主动回忆没听懂的词；如需朗读结果，也可以点右上角生成语音。</span>
             </div>
             <button id="ttsButton" class="icon-button" type="button" aria-label="生成 AI 回复语音" title="生成 AI 回复语音" disabled>🔊</button>
           </div>
           <div id="ttsPlayerWrap" class="tts-player" hidden>
             <div class="tts-player-head">
               <strong>TTS 播放器</strong>
-              <span id="ttsPlayerMeta" class="tts-player-meta">点击右上角按钮生成语音后，这里会出现播放器。</span>
+              <span id="ttsPlayerMeta" class="tts-player-meta">需要时再把 AI 结果读出来，这里会显示播放器。</span>
             </div>
             <audio id="ttsPlayer" controls preload="metadata"></audio>
           </div>
           <div class="result-frame">
-            <pre id="resultOutput">等待发送音频…</pre>
+            <pre id="resultOutput">录音已开始。准备好后把刚才那段声音发给 AI；等待结果时，继续重复听并主动回忆。</pre>
           </div>
         </section>
       </article>
@@ -64,57 +64,57 @@
       <section class="hero hero-inline card dark">
         <div>
           <p class="eyebrow">Listen with AI</p>
-          <h2>自动录音、顶部发送、第二行再补充说明。</h2>
-          <p class="lead">黑色 Hero 保留，但不再占据首屏右侧空间。现在把它放到主内容第二行，继续承担说明作用，同时不影响上方核心操作区。</p>
+          <h2>只待在这里听，把听到的和你自己的声音一起发给 AI。</h2>
+          <p class="lead">我们这样设计，是为了让你不要一直盯着字幕，而是把注意力放在听力本身。发送给 AI 之后的等待时间，也不是空白时间——你可以马上重复听刚才那一段，并主动回忆那些没听懂、但又快要想起来的词。</p>
         </div>
         <div class="hero-meta">
           <div>
-            <span>范围</span>
+            <span>发送范围</span>
             <strong id="rangeStatus">最近 20 秒</strong>
           </div>
           <div>
-            <span>缓存上限</span>
-            <strong id="bufferStatus">60 秒</strong>
+            <span>声音来源</span>
+            <strong id="bufferStatus">播客 + 你的声音</strong>
           </div>
         </div>
       </section>
 
       <article class="card">
         <div class="section-head">
-          <p class="eyebrow">02 音频录制</p>
-          <h2>自动连续录制</h2>
+          <p class="eyebrow">02 为什么这样做</p>
+          <h2>把精力留给听和回忆</h2>
         </div>
-        <p class="muted">内部改为 PCM 环形缓冲，底层始终保留最近 60 秒原始音频；你点击发送时，再按当前选择导出最近 20 / 30 / 60 秒等区间的完整 WAV，避免分段拼接导致后续请求失效。</p>
+        <p class="muted">页面会持续录下最近一段声音：包括播客里你听到的内容，也包括你自己复述、跟读、停顿时的自问自答。你不需要切出去找字幕；等 AI 返回结果的这几秒，正好可以继续听、继续猜、继续回忆。</p>
         <div class="pill-row">
-          <span class="pill">自动开始</span>
-          <span class="pill">超出缓存立即丢弃</span>
-          <span class="pill">顶部动效实时反馈</span>
+          <span class="pill">尽量不看字幕</span>
+          <span class="pill">等待时间继续重复听</span>
+          <span class="pill">主动回忆听不懂的词</span>
         </div>
       </article>
 
       <article class="card">
         <div class="section-head">
-          <p class="eyebrow">03 区间设置</p>
-          <h2>选择最近几秒</h2>
+          <p class="eyebrow">03 发送范围</p>
+          <h2>选择要发送的最近声音</h2>
         </div>
-        <label>发送最近音频区间（秒）
+        <label>发送最近这段声音（秒）
           <select id="clipSeconds">
             <option>5</option><option>10</option><option>15</option><option selected>20</option><option>30</option><option>35</option><option>40</option><option>55</option><option>60</option>
           </select>
         </label>
         <label>导出格式
           <select id="audioFormat">
-            <option value="webm">WebM（UI 保留，当前会稳定回退为 WAV）</option>
-            <option value="wav" selected>WAV（推荐，最稳定）</option>
-            <option value="mp3">MP3（UI 保留，当前会稳定回退为 WAV）</option>
+            <option value="webm">WebM（界面保留，实际会优先稳定发送）</option>
+            <option value="wav" selected>WAV（推荐）</option>
+            <option value="mp3">MP3（界面保留，实际会优先稳定发送）</option>
           </select>
         </label>
       </article>
 
       <article class="card">
         <div class="section-head">
-          <p class="eyebrow">04 AI 参数设置</p>
-          <h2>自定义 AI 入口</h2>
+          <p class="eyebrow">04 AI 设置</p>
+          <h2>让 AI 更懂你这一段在听什么</h2>
         </div>
         <label>请求模式
           <select id="apiMode">
@@ -127,14 +127,14 @@
         <label>API Key <input id="apiKey" type="password" placeholder="sk-..." /></label>
         <label>模型 <input id="apiModel" value="gemini-2.5-flash" /></label>
         <label>提示词
-          <textarea id="promptInput">用户正在通过博客学习新语言，请回答用户的问题，帮助用户理解博客的内容。</textarea>
+          <textarea id="promptInput">用户正在用播客练习听力。你会同时收到播客中的声音，以及用户自己的跟读、复述或提问。请帮助用户理解刚才那段内容，优先指出可能没听懂的词、短语和关键意思，并给出简洁、可继续边听边验证的说明。</textarea>
         </label>
       </article>
 
       <article class="card hero-inline">
         <div class="section-head">
-          <p class="eyebrow">05 TTS 配置</p>
-          <h2>底部自定义语音栏</h2>
+          <p class="eyebrow">05 结果朗读</p>
+          <h2>需要时，再把 AI 结果读出来</h2>
         </div>
         <div class="settings-grid">
           <label>TTS URL <input id="ttsUrl" value="https://api.0-0.pro/v1/chat/completions" /></label>
