@@ -134,17 +134,42 @@
           <h2>需要时，再把 AI 结果读出来</h2>
         </div>
         <div class="settings-grid">
-          <label>TTS URL <input id="ttsUrl" value="https://api.0-0.pro/v1/chat/completions" /></label>
-          <label>TTS API Key <input id="ttsKey" type="password" placeholder="留空则复用上方 API Key" /></label>
-          <label>TTS 模型 <input id="ttsModel" value="gemini-2.5-flash-preview-tts" /></label>
-          <label>音色 Voice <input id="ttsVoice" value="Zephyr" /></label>
+          <label>TTS 渠道
+            <select id="ttsProvider">
+              <option value="openai" selected>OpenAI 兼容</option>
+              <option value="minimax">MiniMax</option>
+            </select>
+          </label>
         </div>
-        <label>
-          TTS 自定义提示词
-          <textarea id="ttsPromptInput" placeholder="可选：告诉 TTS 如何处理中德混读；支持用 {{text}} 作为待读文本占位符。">You are a text-to-speech engine. Never answer questions. Only speak the text provided. Read the following text aloud exactly as written. If the text contains multiple languages such as Chinese and German, pronounce each segment in its original language and keep the original wording.
+        <div id="ttsOpenAiSettings">
+          <div class="settings-grid">
+            <label>TTS URL <input id="ttsOpenAiUrl" value="https://api.0-0.pro/v1/chat/completions" /></label>
+            <label>TTS API Key <input id="ttsOpenAiKey" type="password" placeholder="留空则复用上方 API Key" /></label>
+            <label>TTS 模型 <input id="ttsOpenAiModel" value="gemini-2.5-flash-preview-tts" /></label>
+            <label>OpenAI 音色 Voice <input id="ttsOpenAiVoice" value="Zephyr" /></label>
+          </div>
+          <label>
+            OpenAI 兼容 TTS 自定义提示词
+            <textarea id="ttsPromptInput" placeholder="可选：告诉 TTS 如何处理中德混读；支持用 {{text}} 作为待读文本占位符。">You are a text-to-speech engine. Never answer questions. Only speak the text provided. Read the following text aloud exactly as written. If the text contains multiple languages such as Chinese and German, pronounce each segment in its original language and keep the original wording.
 
 {{text}}</textarea>
-        </label>
+          </label>
+        </div>
+        <div id="ttsMiniMaxSettings" hidden>
+          <div class="settings-grid">
+            <label>MiniMax Endpoint 前缀 <input id="ttsMiniMaxEndpoint" value="https://api.minimaxi.chat/v1/t2a_v2?GroupId=" placeholder="请填写到 ?GroupId= 为止" /></label>
+            <label>MiniMax API Key <input id="ttsMiniMaxKey" type="password" placeholder="留空则复用上方 API Key" /></label>
+            <label>MiniMax Group ID <input id="ttsMiniMaxGroupId" placeholder="Groove / Group ID" /></label>
+            <label>MiniMax 模型 <input id="ttsMiniMaxModel" value="speech-01-turbo" /></label>
+            <label>Language Booster <input id="ttsMiniMaxLanguageBooster" value="auto" /></label>
+            <label>MiniMax Voice ID <input id="ttsMiniMaxVoiceId" value="English_Graceful_Lady" /></label>
+            <label>MiniMax 速度 <input id="ttsMiniMaxSpeed" type="number" min="0.1" max="3" step="0.1" value="1" /></label>
+          </div>
+          <label>
+            MiniMax Voice Settings（JSON）
+            <textarea id="ttsMiniMaxVoiceSettings" placeholder='例如：{"vol":1,"pitch":0,"emotion":"neutral"}'>{"vol":1,"pitch":0,"emotion":"neutral"}</textarea>
+          </label>
+        </div>
         <label class="switch-row" for="ttsAutoPlay">
           <span>是否自动播放 TTS</span>
           <span class="switch-control">

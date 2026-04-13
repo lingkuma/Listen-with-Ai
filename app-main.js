@@ -3,12 +3,19 @@ const els = {
   status: $("recordingStatus"), buffer: $("bufferStatus"), range: $("rangeStatus"), mime: $("mimeLabel"),
   clip: $("clipSeconds"), format: $("audioFormat"), mode: $("apiMode"), url: $("apiUrl"), key: $("apiKey"),
   model: $("apiModel"), prompt: $("promptInput"), send: $("sendButton"), newChat: $("newChatButton"),
-  conversationList: $("conversationList"), ttsUrl: $("ttsUrl"), ttsKey: $("ttsKey"), ttsModel: $("ttsModel"),
-  ttsVoice: $("ttsVoice"), ttsPrompt: $("ttsPromptInput"), ttsAuto: $("ttsAutoPlay")
+  conversationList: $("conversationList"), ttsProvider: $("ttsProvider"), ttsOpenAiSettings: $("ttsOpenAiSettings"),
+  ttsOpenAiUrl: $("ttsOpenAiUrl"), ttsOpenAiKey: $("ttsOpenAiKey"), ttsOpenAiModel: $("ttsOpenAiModel"),
+  ttsOpenAiVoice: $("ttsOpenAiVoice"), ttsMiniMaxSettings: $("ttsMiniMaxSettings"), ttsMiniMaxEndpoint: $("ttsMiniMaxEndpoint"),
+  ttsMiniMaxKey: $("ttsMiniMaxKey"), ttsMiniMaxGroupId: $("ttsMiniMaxGroupId"), ttsMiniMaxModel: $("ttsMiniMaxModel"),
+  ttsMiniMaxLanguageBooster: $("ttsMiniMaxLanguageBooster"), ttsMiniMaxVoiceId: $("ttsMiniMaxVoiceId"),
+  ttsMiniMaxSpeed: $("ttsMiniMaxSpeed"), ttsMiniMaxVoiceSettings: $("ttsMiniMaxVoiceSettings"),
+  ttsPrompt: $("ttsPromptInput"), ttsAuto: $("ttsAutoPlay")
 };
 const STORAGE_KEY = "listen-with-ai-settings";
 const TTS_CACHE_NAME = "listen-with-ai-tts-v1";
 const DEFAULT_TTS_PROMPT = "You are a text-to-speech engine. Never answer questions. Only speak the text provided. Read the following text aloud exactly as written. If the text contains multiple languages such as Chinese and German, pronounce each segment in its original language and keep the original wording.\n\n{{text}}";
+const DEFAULT_MINIMAX_ENDPOINT = "https://api.minimaxi.chat/v1/t2a_v2?GroupId=";
+const DEFAULT_MINIMAX_VOICE_SETTINGS = '{"vol":1,"pitch":0,"emotion":"neutral"}';
 const MAX_SECONDS = 60, TARGET_RATE = 16000;
 const state = {
   stream: null, ctx: null, source: null, processor: null, sink: null, queue: [], total: 0,
@@ -17,6 +24,7 @@ const state = {
 };
 
 restoreSettings();
+syncTtsProviderUI();
 bindPersistEvents();
 renderConversation();
 boot();
@@ -351,11 +359,79 @@ function buildTtsPrompt(text) {
 function getMessage(threadId, messageId) {
   return findThread(threadId)?.messages.find((item) => item.id === messageId) || null;
 }
+function getTtsProvider() {
+  return els.ttsProvider?.value || "openai";
+}
+function syncTtsProviderUI() {
+  const provider = getTtsProvider();
+  if (els.ttsOpenAiSettings) els.ttsOpenAiSettings.hidden = provider !== "openai";
+  if (els.ttsMiniMaxSettings) els.ttsMiniMaxSettings.hidden = provider !== "minimax";
+}
+function getOpenAiConfig() {
+  return {
+    url: (els.ttsOpenAiUrl.value || els.url.value).trim(),
+    token: (els.ttsOpenAiKey.value || els.key.value).trim(),
+    model: els.ttsOpenAiModel.value.trim(),
+    voice: els.ttsOpenAiVoice.value.trim()
+  };
+}
+function getMiniMaxToken() {
+  return (els.ttsMiniMaxKey.value || els.key.value).trim();
+}
+function normalizeMiniMaxEndpoint(value) {
+  const input = (value || "").trim();
+  if (!input) return "";
+  const match = input.match(/^(.*?(?:\?|&)GroupId=)/i);
+  if (match) return match[1];
+  if (input.endsWith("?")) return `${input}GroupId=`;
+  return input.includes("?") ? `${input}&GroupId=` : `${input}?GroupId=`;
+}
+function parseMiniMaxVoiceSettings() {
+  const raw = (els.ttsMiniMaxVoiceSettings.value || "").trim();
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Voice Settings 必须是 JSON 对象");
+    return parsed;
+  } catch (error) {
+    throw new Error(`MiniMax Voice Settings JSON 解析失败：${error.message}`);
+  }
+}
+function getMiniMaxConfig() {
+  const baseUrl = normalizeMiniMaxEndpoint(els.ttsMiniMaxEndpoint.value || DEFAULT_MINIMAX_ENDPOINT);
+  const groupId = (els.ttsMiniMaxGroupId.value || "").trim();
+  return {
+    url: baseUrl && groupId ? `${baseUrl}${encodeURIComponent(groupId)}` : "",
+    token: getMiniMaxToken(),
+    model: els.ttsMiniMaxModel.value.trim(),
+    languageBooster: (els.ttsMiniMaxLanguageBooster.value || "").trim(),
+    voiceId: els.ttsMiniMaxVoiceId.value.trim(),
+    speed: Number.parseFloat(els.ttsMiniMaxSpeed.value),
+    voiceSettings: parseMiniMaxVoiceSettings(),
+    voiceSettingsRaw: (els.ttsMiniMaxVoiceSettings.value || "").trim()
+  };
+}
 function createTtsCacheKey(text) {
+  const provider = getTtsProvider();
+  if (provider === "minimax") {
+    const config = getMiniMaxConfig();
+    return JSON.stringify({
+      provider,
+      url: config.url,
+      model: config.model,
+      languageBooster: config.languageBooster,
+      voiceId: config.voiceId,
+      speed: Number.isFinite(config.speed) ? config.speed : "",
+      voiceSettings: config.voiceSettingsRaw,
+      text
+    });
+  }
+  const config = getOpenAiConfig();
   return JSON.stringify({
-    url: (els.ttsUrl.value || els.url.value).trim(),
-    model: els.ttsModel.value.trim(),
-    voice: els.ttsVoice.value.trim(),
+    provider,
+    url: config.url,
+    model: config.model,
+    voice: config.voice,
     prompt: buildTtsPrompt(text),
     text
   });
@@ -407,25 +483,18 @@ function attachTtsObjectUrl(blob, mimeType = blob.type || "audio/mpeg") {
   return { objectUrl, mimeType };
 }
 async function requestTtsAudio(text) {
-  const url = (els.ttsUrl.value || els.url.value).trim();
-  const model = els.ttsModel.value.trim();
-  const voice = els.ttsVoice.value.trim();
+  return getTtsProvider() === "minimax" ? requestMiniMaxTtsAudio(text) : requestOpenAiTtsAudio(text);
+}
+async function requestOpenAiTtsAudio(text) {
+  const config = getOpenAiConfig();
   const prompt = buildTtsPrompt(text);
-  if (!url || !model || !voice) throw new Error("请先完整填写 TTS URL、模型和 Voice。");
+  if (!config.url || !config.model || !config.voice) throw new Error("请先完整填写 OpenAI TTS URL、模型和 Voice。");
   const headers = { "Content-Type": "application/json" };
-  const token = (els.ttsKey.value || els.key.value).trim();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(url, {
+  if (config.token) headers.Authorization = `Bearer ${config.token}`;
+  const res = await fetch(config.url, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      model,
-      messages: [{
-        role: "user",
-        content: prompt
-      }],
-      voice
-    })
+    body: JSON.stringify({ model: config.model, messages: [{ role: "user", content: prompt }], voice: config.voice })
   });
   const rawText = await res.text();
   let json = null;
@@ -436,13 +505,45 @@ async function requestTtsAudio(text) {
   const blob = base64ToBlob(base64Audio, detectAudioMime(base64Audio));
   return { blob, mimeType: blob.type };
 }
+async function requestMiniMaxTtsAudio(text) {
+  const config = getMiniMaxConfig();
+  if (!config.url || !config.model || !config.voiceId) throw new Error("请先完整填写 MiniMax Endpoint、Group ID、模型和 Voice ID。");
+  const headers = { "Content-Type": "application/json" };
+  if (config.token) headers.Authorization = `Bearer ${config.token}`;
+  const voice_setting = { ...config.voiceSettings, voice_id: config.voiceId };
+  if (Number.isFinite(config.speed)) voice_setting.speed = config.speed;
+  const body = {
+    model: config.model,
+    text,
+    stream: false,
+    output_format: "hex",
+    voice_setting,
+    audio_setting: { sample_rate: 32000, bitrate: 128000, format: "mp3", channel: 1 }
+  };
+  if (config.languageBooster) body.language_boost = config.languageBooster;
+  const res = await fetch(config.url, { method: "POST", headers, body: JSON.stringify(body) });
+  const rawText = await res.text();
+  let json = null;
+  try { json = JSON.parse(rawText); } catch {}
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}\n${extractTtsError(json) || rawText}`);
+  const hexAudio = json?.data?.audio;
+  if (!hexAudio) throw new Error(extractTtsError(json) || "MiniMax TTS 响应里没有返回 data.audio");
+  const blob = hexToBlob(hexAudio, "audio/mpeg");
+  return { blob, mimeType: blob.type };
+}
 function extractTtsError(json) {
-  return json?.error?.message || json?.choices?.[0]?.message?.content || "";
+  return json?.base_resp?.status_msg || json?.error?.message || json?.choices?.[0]?.message?.content || json?.message || "";
 }
 function base64ToBlob(base64, mimeType) {
   const binary = atob(base64.replace(/\s+/g, ""));
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType });
+}
+function hexToBlob(hex, mimeType) {
+  const cleaned = hex.replace(/[^0-9a-f]/gi, "");
+  const bytes = new Uint8Array(cleaned.length / 2);
+  for (let i = 0; i < cleaned.length; i += 2) bytes[i / 2] = parseInt(cleaned.slice(i, i + 2), 16);
   return new Blob([bytes], { type: mimeType });
 }
 function detectAudioMime(base64) {
@@ -453,21 +554,38 @@ function detectAudioMime(base64) {
 function restoreSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (!saved) return;
-    ["clip", "format", "mode", "url", "key", "model", "prompt", "ttsUrl", "ttsKey", "ttsModel", "ttsVoice", "ttsPrompt"].forEach((k) => saved[k] != null && (els[k].value = saved[k]));
-    els.ttsAuto.checked = Boolean(saved.ttsAuto);
+    if (saved) {
+      ["clip", "format", "mode", "url", "key", "model", "prompt", "ttsProvider", "ttsOpenAiUrl", "ttsOpenAiKey", "ttsOpenAiModel", "ttsOpenAiVoice", "ttsMiniMaxEndpoint", "ttsMiniMaxKey", "ttsMiniMaxGroupId", "ttsMiniMaxModel", "ttsMiniMaxLanguageBooster", "ttsMiniMaxVoiceId", "ttsMiniMaxSpeed", "ttsMiniMaxVoiceSettings", "ttsPrompt"].forEach((k) => saved[k] != null && (els[k].value = saved[k]));
+      els.ttsAuto.checked = Boolean(saved.ttsAuto);
+    }
   } catch {}
+  if (!els.ttsProvider.value) els.ttsProvider.value = "openai";
+  els.ttsMiniMaxEndpoint.value = normalizeMiniMaxEndpoint(els.ttsMiniMaxEndpoint.value || DEFAULT_MINIMAX_ENDPOINT);
+  if (!els.ttsMiniMaxModel.value) els.ttsMiniMaxModel.value = "speech-01-turbo";
+  if (!els.ttsMiniMaxLanguageBooster.value) els.ttsMiniMaxLanguageBooster.value = "auto";
+  if (!els.ttsMiniMaxVoiceSettings.value) els.ttsMiniMaxVoiceSettings.value = DEFAULT_MINIMAX_VOICE_SETTINGS;
 }
 function bindPersistEvents() {
-  [els.clip, els.format, els.mode, els.url, els.key, els.model, els.prompt, els.ttsUrl, els.ttsKey, els.ttsModel, els.ttsVoice, els.ttsPrompt].forEach((el) => ["input", "change"].forEach((evt) => el.addEventListener(evt, persistSettings)));
+  [els.clip, els.format, els.mode, els.url, els.key, els.model, els.prompt, els.ttsProvider, els.ttsOpenAiUrl, els.ttsOpenAiKey, els.ttsOpenAiModel, els.ttsOpenAiVoice, els.ttsMiniMaxEndpoint, els.ttsMiniMaxKey, els.ttsMiniMaxGroupId, els.ttsMiniMaxModel, els.ttsMiniMaxLanguageBooster, els.ttsMiniMaxVoiceId, els.ttsMiniMaxSpeed, els.ttsMiniMaxVoiceSettings, els.ttsPrompt].forEach((el) => ["input", "change"].forEach((evt) => el.addEventListener(evt, persistSettings)));
+  els.ttsProvider.addEventListener("change", syncTtsProviderUI);
+  els.ttsMiniMaxEndpoint.addEventListener("blur", () => {
+    els.ttsMiniMaxEndpoint.value = normalizeMiniMaxEndpoint(els.ttsMiniMaxEndpoint.value || DEFAULT_MINIMAX_ENDPOINT);
+    persistSettings();
+  });
   els.ttsAuto.addEventListener("change", persistSettings);
 }
 function persistSettings() {
   try {
+    const ttsMiniMaxEndpoint = normalizeMiniMaxEndpoint(els.ttsMiniMaxEndpoint.value || DEFAULT_MINIMAX_ENDPOINT);
+    els.ttsMiniMaxEndpoint.value = ttsMiniMaxEndpoint;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       clip: els.clip.value, format: els.format.value, mode: els.mode.value, url: els.url.value, key: els.key.value,
-      model: els.model.value, prompt: els.prompt.value, ttsUrl: els.ttsUrl.value, ttsKey: els.ttsKey.value,
-      ttsModel: els.ttsModel.value, ttsVoice: els.ttsVoice.value, ttsPrompt: els.ttsPrompt.value, ttsAuto: els.ttsAuto.checked
+      model: els.model.value, prompt: els.prompt.value, ttsProvider: els.ttsProvider.value, ttsOpenAiUrl: els.ttsOpenAiUrl.value,
+      ttsOpenAiKey: els.ttsOpenAiKey.value, ttsOpenAiModel: els.ttsOpenAiModel.value, ttsOpenAiVoice: els.ttsOpenAiVoice.value,
+      ttsMiniMaxEndpoint, ttsMiniMaxKey: els.ttsMiniMaxKey.value, ttsMiniMaxGroupId: els.ttsMiniMaxGroupId.value,
+      ttsMiniMaxModel: els.ttsMiniMaxModel.value, ttsMiniMaxLanguageBooster: els.ttsMiniMaxLanguageBooster.value,
+      ttsMiniMaxVoiceId: els.ttsMiniMaxVoiceId.value, ttsMiniMaxSpeed: els.ttsMiniMaxSpeed.value,
+      ttsMiniMaxVoiceSettings: els.ttsMiniMaxVoiceSettings.value, ttsPrompt: els.ttsPrompt.value, ttsAuto: els.ttsAuto.checked
     }));
   } catch {}
 }
