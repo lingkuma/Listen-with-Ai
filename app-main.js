@@ -13,7 +13,7 @@ const MAX_SECONDS = 60, TARGET_RATE = 16000;
 const state = {
   stream: null, ctx: null, source: null, processor: null, sink: null, queue: [], total: 0,
   sampleRate: 48000, startedAt: 0, uiTimer: 0, sending: false, threads: [], activeThreadId: null,
-  nextThreadId: 1, nextMessageId: 1, ttsCache: new Map(), ttsObjectUrls: new Set()
+  nextThreadId: 1, nextMessageId: 1, ttsCache: new Map(), ttsObjectUrls: new Set(), localAudioObjectUrls: new Set()
 };
 
 restoreSettings();
@@ -73,8 +73,17 @@ async function sendClip(action = "continue") {
   if (state.sending) return;
   const seconds = Math.min(Number(els.clip.value) || MAX_SECONDS, state.total / state.sampleRate || 0);
   if (!seconds) return void renderConversation("当前还没有可发送的音频，请等待至少 1 秒。");
+  const prepared = await buildClip(seconds);
+  if (action === "new") resetConversationSession();
+  clearRecordingBuffer();
   const thread = action === "new" || !getActiveThread() ? createThread() : getActiveThread();
-  appendMessage(thread.id, { role: "user", text: `语音提问（最近 ${Math.round(seconds)} 秒）`, status: "done" });
+  appendMessage(thread.id, {
+    role: "user",
+    text: `语音提问（最近 ${Math.round(seconds)} 秒）`,
+    status: "done",
+    localAudioUrl: attachLocalAudioObjectUrl(prepared.blob),
+    localAudioMime: prepared.blob.type || "audio/wav"
+  });
   const assistantMessage = appendMessage(thread.id, { role: "assistant", text: "AI 正在思考…", status: "loading" });
   state.sending = true;
   els.send.disabled = true;
@@ -82,7 +91,6 @@ async function sendClip(action = "continue") {
   document.body.dataset.sendState = "sending";
   renderConversation();
   try {
-    const prepared = await buildClip(seconds);
     const result = els.mode.value === "responses" ? await sendResponses(prepared, thread)
       : els.mode.value === "multipart" ? await sendMultipart(prepared, thread) : await sendChat(prepared, thread);
     updateMessage(thread.id, assistantMessage.id, { text: result, status: "done" });
@@ -97,6 +105,27 @@ async function sendClip(action = "continue") {
     els.newChat.disabled = false;
     delete document.body.dataset.sendState;
   }
+}
+function clearRecordingBuffer() {
+  state.queue = [];
+  state.total = 0;
+  state.startedAt = Date.now();
+  updateStats();
+}
+function resetConversationSession() {
+  state.threads = [];
+  state.activeThreadId = null;
+  state.nextMessageId = 1;
+  state.ttsCache.clear();
+  state.ttsObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+  state.ttsObjectUrls.clear();
+  state.localAudioObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+  state.localAudioObjectUrls.clear();
+}
+function attachLocalAudioObjectUrl(blob) {
+  const objectUrl = URL.createObjectURL(blob);
+  state.localAudioObjectUrls.add(objectUrl);
+  return objectUrl;
 }
 async function buildClip(seconds) {
   const samples = takeLatestSamples(seconds);
@@ -194,7 +223,9 @@ function appendMessage(threadId, payload) {
     audioState: payload.audioState || "idle",
     audioUrl: payload.audioUrl || "",
     audioMime: payload.audioMime || "audio/mpeg",
-    audioError: payload.audioError || ""
+    audioError: payload.audioError || "",
+    localAudioUrl: payload.localAudioUrl || "",
+    localAudioMime: payload.localAudioMime || "audio/wav"
   };
   thread.messages.push(message);
   state.activeThreadId = thread.id;
@@ -240,8 +271,17 @@ function renderMessage(threadId, message) {
       <article class="message-bubble">
         <div class="message-role">${message.role === "assistant" ? "AI" : "你"}</div>
         <div class="message-text">${escapeHTML(message.text)}</div>
-        ${message.role === "assistant" ? renderAssistantAudio(threadId, message) : ""}
+        ${message.role === "assistant" ? renderAssistantAudio(threadId, message) : renderUserAudio(message)}
       </article>
+    </div>
+  `;
+}
+function renderUserAudio(message) {
+  if (!message.localAudioUrl) return "";
+  return `
+    <div class="message-audio user-audio">
+      <span class="audio-status">你的本地录音</span>
+      <audio controls preload="metadata" src="${message.localAudioUrl}"></audio>
     </div>
   `;
 }
@@ -404,5 +444,7 @@ function cleanup() {
   state.ctx?.close?.();
   state.ttsObjectUrls.forEach((url) => URL.revokeObjectURL(url));
   state.ttsObjectUrls.clear();
+  state.localAudioObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+  state.localAudioObjectUrls.clear();
   state.ttsCache.clear();
 }
