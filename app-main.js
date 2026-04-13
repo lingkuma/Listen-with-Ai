@@ -2,10 +2,9 @@ const $ = (id) => document.getElementById(id);
 const els = {
   status: $("recordingStatus"), buffer: $("bufferStatus"), range: $("rangeStatus"), mime: $("mimeLabel"),
   clip: $("clipSeconds"), format: $("audioFormat"), mode: $("apiMode"), url: $("apiUrl"), key: $("apiKey"),
-  model: $("apiModel"), prompt: $("promptInput"), output: $("resultOutput"), send: $("sendButton"),
-  ttsBtn: $("ttsButton"), ttsUrl: $("ttsUrl"), ttsKey: $("ttsKey"), ttsModel: $("ttsModel"),
-  ttsVoice: $("ttsVoice"), ttsPrompt: $("ttsPromptInput"), ttsAuto: $("ttsAutoPlay"), ttsPlayerWrap: $("ttsPlayerWrap"),
-  ttsPlayer: $("ttsPlayer"), ttsPlayerMeta: $("ttsPlayerMeta")
+  model: $("apiModel"), prompt: $("promptInput"), send: $("sendButton"), newChat: $("newChatButton"),
+  conversationList: $("conversationList"), ttsUrl: $("ttsUrl"), ttsKey: $("ttsKey"), ttsModel: $("ttsModel"),
+  ttsVoice: $("ttsVoice"), ttsPrompt: $("ttsPromptInput"), ttsAuto: $("ttsAutoPlay")
 };
 const STORAGE_KEY = "listen-with-ai-settings";
 const TTS_CACHE_NAME = "listen-with-ai-tts-v1";
@@ -13,15 +12,17 @@ const DEFAULT_TTS_PROMPT = "You are a text-to-speech engine. Never answer questi
 const MAX_SECONDS = 60, TARGET_RATE = 16000;
 const state = {
   stream: null, ctx: null, source: null, processor: null, sink: null, queue: [], total: 0,
-  sampleRate: 48000, startedAt: 0, uiTimer: 0, sending: false, latestText: "", ttsLoading: false,
-  ttsCache: new Map(), ttsAudio: null, ttsObjectUrls: new Set(), activeTtsUrl: ""
+  sampleRate: 48000, startedAt: 0, uiTimer: 0, sending: false, threads: [], activeThreadId: null,
+  nextThreadId: 1, nextMessageId: 1, ttsCache: new Map(), ttsObjectUrls: new Set()
 };
 
 restoreSettings();
 bindPersistEvents();
+renderConversation();
 boot();
-els.send.addEventListener("click", sendClip);
-els.ttsBtn.addEventListener("click", () => playLatestTts(true));
+els.send.addEventListener("click", () => sendClip("continue"));
+els.newChat.addEventListener("click", () => sendClip("new"));
+els.conversationList.addEventListener("click", handleConversationClick);
 window.addEventListener("beforeunload", cleanup);
 
 async function boot() {
@@ -46,10 +47,10 @@ async function boot() {
     els.status.textContent = "录音中（PCM 环形缓冲已启动）";
     els.mime.textContent = "缓存引擎：PCM / 上传格式：WAV";
     updateStats();
-    syncTtsButton();
+    renderConversation();
   } catch (error) {
     els.status.textContent = "无法录音";
-    renderResult(`麦克风权限申请失败：${error.message}`);
+    renderConversation(`麦克风权限申请失败：${error.message}`);
   }
 }
 function pushChunk(input) {
@@ -64,29 +65,36 @@ function pushChunk(input) {
   }
 }
 function updateStats() {
-  const selectedSeconds = Number(els.clip.value) || 20;
+  const selectedSeconds = Number(els.clip.value) || 30;
   els.buffer.textContent = `${MAX_SECONDS} 秒`;
   els.range.textContent = `最近 ${selectedSeconds} 秒`;
 }
-async function sendClip() {
+async function sendClip(action = "continue") {
   if (state.sending) return;
   const seconds = Math.min(Number(els.clip.value) || MAX_SECONDS, state.total / state.sampleRate || 0);
-  if (!seconds) return void renderResult("当前还没有可发送的音频，请等待至少 1 秒。", false);
+  if (!seconds) return void renderConversation("当前还没有可发送的音频，请等待至少 1 秒。");
+  const thread = action === "new" || !getActiveThread() ? createThread() : getActiveThread();
+  appendMessage(thread.id, { role: "user", text: `语音提问（最近 ${Math.round(seconds)} 秒）`, status: "done" });
+  const assistantMessage = appendMessage(thread.id, { role: "assistant", text: "AI 正在思考…", status: "loading" });
   state.sending = true;
   els.send.disabled = true;
+  els.newChat.disabled = true;
   document.body.dataset.sendState = "sending";
-  renderResult("正在导出最近音频并发送给 AI…", false);
+  renderConversation();
   try {
     const prepared = await buildClip(seconds);
-    const result = els.mode.value === "responses" ? await sendResponses(prepared)
-      : els.mode.value === "multipart" ? await sendMultipart(prepared) : await sendChat(prepared);
-    renderResult(result);
-    if (els.ttsAuto.checked) await playLatestTts(true);
+    const result = els.mode.value === "responses" ? await sendResponses(prepared, thread)
+      : els.mode.value === "multipart" ? await sendMultipart(prepared, thread) : await sendChat(prepared, thread);
+    updateMessage(thread.id, assistantMessage.id, { text: result, status: "done" });
+    renderConversation();
+    if (els.ttsAuto.checked) await ensureMessageAudio(thread.id, assistantMessage.id, true);
   } catch (error) {
-    renderResult(`发送失败：${error.message}`);
+    updateMessage(thread.id, assistantMessage.id, { text: `发送失败：${error.message}`, status: "error" });
+    renderConversation();
   } finally {
     state.sending = false;
     els.send.disabled = false;
+    els.newChat.disabled = false;
     delete document.body.dataset.sendState;
   }
 }
@@ -123,82 +131,150 @@ function encodeWav(samples, sampleRate) {
   for (let i = 0, p = 44; i < samples.length; i += 1, p += 2) { const s = Math.max(-1, Math.min(1, samples[i])); view.setInt16(p, s < 0 ? s * 0x8000 : s * 0x7fff, true); }
   return new Blob([buffer], { type: "audio/wav" });
 }
-async function sendMultipart(file) { const body = new FormData(); body.append("file", file.blob, `clip.${file.ext}`); body.append("model", els.model.value.trim()); body.append("prompt", els.prompt.value.trim()); return parseResponse(await fetch(els.url.value.trim(), { method: "POST", headers: authHeaders(), body })); }
-async function sendResponses(file) { const body = { model: els.model.value.trim(), input: [{ role: "user", content: [{ type: "input_text", text: els.prompt.value.trim() }, { type: "input_audio", input_audio: { data: await toBase64(file.blob), format: file.ext } }] }] }; return parseResponse(await fetch(els.url.value.trim(), { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) })); }
-async function sendChat(file) { const body = { model: els.model.value.trim(), messages: [{ role: "user", content: [{ type: "text", text: els.prompt.value.trim() }, { type: "input_audio", input_audio: { data: await toBase64(file.blob), format: file.ext } }] }], temperature: 0 }; return parseResponse(await fetch(els.url.value.trim(), { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) })); }
-async function parseResponse(res) { const text = await res.text(); if (!res.ok) throw new Error(`${res.status} ${res.statusText}\n${text}`); try { const json = JSON.parse(text); return json.output_text || json.text || json.result || json.transcript || extractChoiceText(json) || JSON.stringify(json, null, 2); } catch { return text; } }
-function extractChoiceText(json) { const content = json.choices?.[0]?.message?.content; if (typeof content === "string") return content; if (Array.isArray(content)) return content.map((x) => x.text || x.transcript || x?.input_audio?.transcript || "").filter(Boolean).join("\n"); return ""; }
+async function sendMultipart(file, thread) {
+  const body = new FormData();
+  body.append("file", file.blob, `clip.${file.ext}`);
+  body.append("model", els.model.value.trim());
+  body.append("prompt", buildRequestPrompt(thread));
+  return parseResponse(await fetch(els.url.value.trim(), { method: "POST", headers: authHeaders(), body }));
+}
+async function sendResponses(file, thread) {
+  const body = { model: els.model.value.trim(), input: [{ role: "user", content: [{ type: "input_text", text: buildRequestPrompt(thread) }, { type: "input_audio", input_audio: { data: await toBase64(file.blob), format: file.ext } }] }] };
+  return parseResponse(await fetch(els.url.value.trim(), { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) }));
+}
+async function sendChat(file, thread) {
+  const body = { model: els.model.value.trim(), messages: [{ role: "user", content: [{ type: "text", text: buildRequestPrompt(thread) }, { type: "input_audio", input_audio: { data: await toBase64(file.blob), format: file.ext } }] }], temperature: 0 };
+  return parseResponse(await fetch(els.url.value.trim(), { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) }));
+}
+async function parseResponse(res) {
+  const text = await res.text();
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}\n${text}`);
+  try {
+    const json = JSON.parse(text);
+    return json.output_text || json.text || json.result || json.transcript || extractChoiceText(json) || JSON.stringify(json, null, 2);
+  } catch {
+    return text;
+  }
+}
+function extractChoiceText(json) {
+  const content = json.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content.map((x) => x.text || x.transcript || x?.input_audio?.transcript || "").filter(Boolean).join("\n");
+  return "";
+}
 function authHeaders() { return els.key.value.trim() ? { Authorization: `Bearer ${els.key.value.trim()}` } : {}; }
 function toBase64(blob) { return new Promise((resolve, reject) => { const r = new FileReader(); r.onloadend = () => resolve(String(r.result).split(",")[1]); r.onerror = reject; r.readAsDataURL(blob); }); }
-function renderResult(text, updateLatest = true) {
-  els.output.textContent = text;
-  if (updateLatest) {
-    const nextText = normalizeTtsText(text);
-    const changed = nextText !== state.latestText;
-    state.latestText = nextText;
-    if (changed) clearTtsPlayer();
-  }
-  syncTtsButton();
+function buildRequestPrompt(thread) {
+  const basePrompt = els.prompt.value.trim();
+  const history = thread.messages
+    .filter((message) => message.status === "done")
+    .map((message) => `${message.role === "assistant" ? "AI" : "用户"}：${message.text}`)
+    .join("\n\n");
+  return history ? `${basePrompt}\n\n以下是当前连续对话的历史，请保持上下文一致并继续回答：\n${history}\n\n请重点回答用户刚刚最新这段语音中的问题。` : basePrompt;
 }
-function normalizeTtsText(text) {
-  return String(text || "").replace(/\s+/g, " ").trim();
+function escapeHTML(text) {
+  return String(text || "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+}
+function findThread(threadId) { return state.threads.find((thread) => thread.id === threadId) || null; }
+function getActiveThread() { return findThread(state.activeThreadId); }
+function createThread() {
+  const thread = { id: `thread-${state.nextThreadId++}`, messages: [] };
+  state.threads.push(thread);
+  state.activeThreadId = thread.id;
+  return thread;
+}
+function appendMessage(threadId, payload) {
+  const thread = findThread(threadId);
+  if (!thread) return null;
+  const message = {
+    id: `msg-${state.nextMessageId++}`,
+    role: payload.role,
+    text: payload.text || "",
+    status: payload.status || "done",
+    audioState: payload.audioState || "idle",
+    audioUrl: payload.audioUrl || "",
+    audioMime: payload.audioMime || "audio/mpeg",
+    audioError: payload.audioError || ""
+  };
+  thread.messages.push(message);
+  state.activeThreadId = thread.id;
+  return message;
+}
+function updateMessage(threadId, messageId, patch) {
+  const message = findThread(threadId)?.messages.find((item) => item.id === messageId);
+  if (!message) return null;
+  Object.assign(message, patch);
+  return message;
+}
+function renderConversation(notice = "") {
+  const threads = state.threads.filter((thread) => thread.messages.length);
+  if (!threads.length) {
+    const emptyText = notice || "录音已开始。先说出你的问题，然后点击“继续提问”；如果想重新开始一段全新的对话，再点击“新的提问”。";
+    els.conversationList.innerHTML = `<div class="empty-conversation">${escapeHTML(emptyText)}</div>`;
+    return;
+  }
+  els.conversationList.innerHTML = threads.map((thread, index) => `
+    <section class="conversation-thread ${thread.id === state.activeThreadId ? "is-active" : ""}">
+      <div class="thread-head">
+        <span class="thread-badge">${thread.id === state.activeThreadId ? "当前对话" : `历史对话 ${index + 1}`}</span>
+        <span class="thread-meta">${thread.messages.length} 条消息</span>
+      </div>
+      <div class="thread-messages">
+        ${thread.messages.map((message) => renderMessage(thread.id, message)).join("")}
+      </div>
+    </section>
+  `).join("");
+  scheduleConversationScroll();
+}
+function scheduleConversationScroll() {
+  window.requestAnimationFrame(() => {
+    const rows = els.conversationList.querySelectorAll(".message-row");
+    const lastRow = rows[rows.length - 1];
+    if (!lastRow) return;
+    lastRow.scrollIntoView({ block: "end", behavior: state.sending ? "smooth" : "auto" });
+  });
+}
+function renderMessage(threadId, message) {
+  return `
+    <div class="message-row role-${message.role}" data-thread-id="${threadId}" data-message-id="${message.id}">
+      <article class="message-bubble">
+        <div class="message-role">${message.role === "assistant" ? "AI" : "你"}</div>
+        <div class="message-text">${escapeHTML(message.text)}</div>
+        ${message.role === "assistant" ? renderAssistantAudio(threadId, message) : ""}
+      </article>
+    </div>
+  `;
+}
+function renderAssistantAudio(threadId, message) {
+  if (message.status === "loading") return `<div class="message-audio"><span class="audio-status">正在生成回复…</span></div>`;
+  const canPlay = message.audioState === "ready" && message.audioUrl;
+  const isLoading = message.audioState === "loading";
+  const action = canPlay ? "play-audio" : "generate-audio";
+  const label = isLoading ? "生成中…" : canPlay ? "播放 MP3" : "生成 MP3";
+  const status = isLoading ? "正在生成 MP3…" : message.audioState === "error" ? escapeHTML(message.audioError) : canPlay ? "音频已就绪，可直接播放。" : "";
+  return `
+    <div class="message-audio">
+      <div class="audio-toolbar">
+        <button class="mini-button" type="button" data-action="${action}" data-thread-id="${threadId}" data-message-id="${message.id}" ${isLoading ? "disabled" : ""}>${label}</button>
+        <span class="audio-status">${status}</span>
+      </div>
+      ${canPlay ? `<audio controls preload="metadata" src="${message.audioUrl}"></audio>` : ""}
+    </div>
+  `;
+}
+function handleConversationClick(event) {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+  const { action, threadId, messageId } = button.dataset;
+  if (action === "play-audio") return void playMessageAudio(messageId);
+  if (action === "generate-audio") ensureMessageAudio(threadId, messageId, true);
 }
 function buildTtsPrompt(text) {
   const template = (els.ttsPrompt?.value || DEFAULT_TTS_PROMPT).trim() || DEFAULT_TTS_PROMPT;
   return template.includes("{{text}}") ? template.split("{{text}}").join(text) : `${template}\n\n${text}`;
 }
-function clearTtsPlayer() {
-  els.ttsPlayer.pause();
-  els.ttsPlayer.removeAttribute("src");
-  els.ttsPlayer.load();
-  state.activeTtsUrl = "";
-  els.ttsPlayerWrap.hidden = true;
-  els.ttsPlayerMeta.textContent = "点击右上角按钮生成语音后，这里会出现播放器。";
-}
-function syncTtsButton() {
-  els.ttsBtn.disabled = !state.latestText || state.ttsLoading;
-  els.ttsBtn.textContent = state.ttsLoading ? "…" : "🔊";
-  els.ttsBtn.title = state.latestText ? "生成 / 打开 AI 回复语音播放器" : "暂无可播放内容";
-}
-async function playLatestTts(shouldAutoplay = true) {
-  if (!state.latestText || state.ttsLoading) return;
-  state.ttsLoading = true;
-  syncTtsButton();
-  try {
-    const audioSource = await getOrCreateTtsAudio(state.latestText);
-    await showTtsPlayer(audioSource, shouldAutoplay);
-  } catch (error) {
-    renderResult(`${els.output.textContent}\n\n[TTS 播放失败] ${error.message}`, false);
-  } finally {
-    state.ttsLoading = false;
-    syncTtsButton();
-  }
-}
-async function showTtsPlayer(audioSource, shouldAutoplay) {
-  if (!state.ttsAudio) state.ttsAudio = els.ttsPlayer;
-  state.ttsAudio.pause();
-  if (state.activeTtsUrl !== audioSource.objectUrl) state.ttsAudio.src = audioSource.objectUrl;
-  state.activeTtsUrl = audioSource.objectUrl;
-  els.ttsPlayerWrap.hidden = false;
-  els.ttsPlayerMeta.textContent = audioSource.cached ? "已从本地缓存载入，可直接重复播放。" : "已生成新音频，并写入本地缓存。";
-  if (!shouldAutoplay) return;
-  state.ttsAudio.currentTime = 0;
-  await state.ttsAudio.play();
-}
-async function getOrCreateTtsAudio(text) {
-  const key = createTtsCacheKey(text);
-  if (state.ttsCache.has(key)) return { ...state.ttsCache.get(key), cached: true };
-  const persisted = await loadPersistedTtsAudio(key);
-  if (persisted) {
-    const cachedSource = attachTtsObjectUrl(persisted.blob);
-    state.ttsCache.set(key, cachedSource);
-    return { ...cachedSource, cached: true };
-  }
-  const created = await requestTtsAudio(text);
-  const source = attachTtsObjectUrl(created.blob);
-  state.ttsCache.set(key, source);
-  await persistTtsAudio(key, created.blob);
-  return { ...source, cached: false };
+function getMessage(threadId, messageId) {
+  return findThread(threadId)?.messages.find((item) => item.id === messageId) || null;
 }
 function createTtsCacheKey(text) {
   return JSON.stringify({
@@ -209,31 +285,51 @@ function createTtsCacheKey(text) {
     text
   });
 }
-function createTtsCacheRequest(key) {
-  return new Request(`https://listen-with-ai.local/tts-cache?key=${encodeURIComponent(key)}`);
-}
-async function loadPersistedTtsAudio(key) {
-  if (!("caches" in window)) return null;
+async function ensureMessageAudio(threadId, messageId, shouldAutoplay = false) {
+  const message = getMessage(threadId, messageId);
+  if (!message || message.role !== "assistant" || message.status !== "done") return;
+  if (message.audioState === "ready" && message.audioUrl) {
+    renderConversation();
+    if (shouldAutoplay) playMessageAudio(messageId);
+    return;
+  }
+  if (message.audioState === "loading") return;
+  updateMessage(threadId, messageId, { audioState: "loading", audioError: "" });
+  renderConversation();
   try {
-    const cache = await caches.open(TTS_CACHE_NAME);
-    const cached = await cache.match(createTtsCacheRequest(key));
-    if (!cached) return null;
-    return { blob: await cached.blob() };
-  } catch {
-    return null;
+    const cacheKey = createTtsCacheKey(message.text);
+    let cached = state.ttsCache.get(cacheKey);
+    if (!cached) {
+      const created = await requestTtsAudio(message.text);
+      cached = attachTtsObjectUrl(created.blob, created.mimeType);
+      state.ttsCache.set(cacheKey, cached);
+    }
+    updateMessage(threadId, messageId, {
+      audioState: "ready",
+      audioUrl: cached.objectUrl,
+      audioMime: cached.mimeType,
+      audioError: ""
+    });
+    renderConversation();
+    if (shouldAutoplay) playMessageAudio(messageId);
+  } catch (error) {
+    updateMessage(threadId, messageId, {
+      audioState: "error",
+      audioError: `MP3 生成失败：${error.message}`
+    });
+    renderConversation();
   }
 }
-async function persistTtsAudio(key, blob) {
-  if (!("caches" in window)) return;
-  try {
-    const cache = await caches.open(TTS_CACHE_NAME);
-    await cache.put(createTtsCacheRequest(key), new Response(blob, { headers: { "Content-Type": blob.type || "audio/wav" } }));
-  } catch {}
+function playMessageAudio(messageId) {
+  const audio = els.conversationList.querySelector(`.message-row[data-message-id="${messageId}"] audio`);
+  if (!audio) return;
+  audio.currentTime = 0;
+  audio.play().catch(() => {});
 }
-function attachTtsObjectUrl(blob) {
+function attachTtsObjectUrl(blob, mimeType = blob.type || "audio/mpeg") {
   const objectUrl = URL.createObjectURL(blob);
   state.ttsObjectUrls.add(objectUrl);
-  return { objectUrl, mimeType: blob.type || "audio/wav" };
+  return { objectUrl, mimeType };
 }
 async function requestTtsAudio(text) {
   const url = (els.ttsUrl.value || els.url.value).trim();
