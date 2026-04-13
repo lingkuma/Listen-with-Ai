@@ -82,7 +82,11 @@ async function sendClip(action = "continue") {
     text: `语音提问（最近 ${Math.round(seconds)} 秒）`,
     status: "done",
     localAudioUrl: attachLocalAudioObjectUrl(prepared.blob),
-    localAudioMime: prepared.blob.type || "audio/wav"
+    localAudioMime: prepared.blob.type || "audio/wav",
+    requestAudioBase64: prepared.base64,
+    requestAudioFormat: prepared.ext,
+    audioSamples: prepared.samples,
+    audioSampleRate: prepared.sampleRate
   });
   const assistantMessage = appendMessage(thread.id, { role: "assistant", text: "AI 正在思考…", status: "loading" });
   state.sending = true;
@@ -130,7 +134,8 @@ function attachLocalAudioObjectUrl(blob) {
 async function buildClip(seconds) {
   const samples = takeLatestSamples(seconds);
   const mono16k = state.sampleRate === TARGET_RATE ? samples : resample(samples, state.sampleRate, TARGET_RATE);
-  return { blob: encodeWav(mono16k, TARGET_RATE), ext: "wav", note: "" };
+  const blob = encodeWav(mono16k, TARGET_RATE);
+  return { blob, ext: "wav", note: "", samples: mono16k, sampleRate: TARGET_RATE, base64: await toBase64(blob) };
 }
 function takeLatestSamples(seconds) {
   const need = Math.min(state.total, Math.floor(seconds * state.sampleRate));
@@ -161,18 +166,21 @@ function encodeWav(samples, sampleRate) {
   return new Blob([buffer], { type: "audio/wav" });
 }
 async function sendMultipart(file, thread) {
+  const mergedAudio = buildThreadAudioBlob(thread);
   const body = new FormData();
-  body.append("file", file.blob, `clip.${file.ext}`);
+  body.append("file", mergedAudio.blob, `conversation.${mergedAudio.ext}`);
   body.append("model", els.model.value.trim());
   body.append("prompt", buildRequestPrompt(thread));
   return parseResponse(await fetch(els.url.value.trim(), { method: "POST", headers: authHeaders(), body }));
 }
 async function sendResponses(file, thread) {
-  const body = { model: els.model.value.trim(), input: [{ role: "user", content: [{ type: "input_text", text: buildRequestPrompt(thread) }, { type: "input_audio", input_audio: { data: await toBase64(file.blob), format: file.ext } }] }] };
+  const content = [{ type: "input_text", text: buildRequestPrompt(thread) }, ...buildAudioInputs(thread, "responses")];
+  const body = { model: els.model.value.trim(), input: [{ role: "user", content }] };
   return parseResponse(await fetch(els.url.value.trim(), { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) }));
 }
 async function sendChat(file, thread) {
-  const body = { model: els.model.value.trim(), messages: [{ role: "user", content: [{ type: "text", text: buildRequestPrompt(thread) }, { type: "input_audio", input_audio: { data: await toBase64(file.blob), format: file.ext } }] }], temperature: 0 };
+  const content = [{ type: "text", text: buildRequestPrompt(thread) }, ...buildAudioInputs(thread, "chat")];
+  const body = { model: els.model.value.trim(), messages: [{ role: "user", content }], temperature: 0 };
   return parseResponse(await fetch(els.url.value.trim(), { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) }));
 }
 async function parseResponse(res) {
@@ -197,9 +205,32 @@ function buildRequestPrompt(thread) {
   const basePrompt = els.prompt.value.trim();
   const history = thread.messages
     .filter((message) => message.status === "done")
-    .map((message) => `${message.role === "assistant" ? "AI" : "用户"}：${message.text}`)
+    .map((message, index) => message.role === "assistant"
+      ? `第 ${index + 1} 条 AI 回复：\n${message.text}`
+      : `第 ${index + 1} 条用户语音：${message.text}（该条原始音频已在请求中附带）`)
     .join("\n\n");
-  return history ? `${basePrompt}\n\n以下是当前连续对话的历史，请保持上下文一致并继续回答：\n${history}\n\n请重点回答用户刚刚最新这段语音中的问题。` : basePrompt;
+  return history ? `${basePrompt}\n\n以下是当前完整对话历史。所有用户历史语音都已按时间顺序附在本次请求中，请结合全部历史音频和以下历史文本继续回答：\n\n${history}\n\n请基于整段历史继续回答用户最新问题。` : `${basePrompt}\n\n本次请求已附带当前用户语音，请直接回答。`;
+}
+function buildAudioInputs(thread, mode) {
+  return thread.messages
+    .filter((message) => message.role === "user" && message.status === "done" && message.requestAudioBase64)
+    .map((message) => mode === "responses"
+      ? { type: "input_audio", input_audio: { data: message.requestAudioBase64, format: message.requestAudioFormat || "wav" } }
+      : { type: "input_audio", input_audio: { data: message.requestAudioBase64, format: message.requestAudioFormat || "wav" } });
+}
+function buildThreadAudioBlob(thread) {
+  const segments = thread.messages
+    .filter((message) => message.role === "user" && message.status === "done" && message.audioSamples?.length)
+    .map((message) => message.audioSamples);
+  if (!segments.length) return { blob: encodeWav(new Float32Array(1), TARGET_RATE), ext: "wav" };
+  const totalLength = segments.reduce((sum, samples) => sum + samples.length, 0);
+  const merged = new Float32Array(totalLength);
+  let offset = 0;
+  segments.forEach((samples) => {
+    merged.set(samples, offset);
+    offset += samples.length;
+  });
+  return { blob: encodeWav(merged, TARGET_RATE), ext: "wav" };
 }
 function escapeHTML(text) {
   return String(text || "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
@@ -225,7 +256,11 @@ function appendMessage(threadId, payload) {
     audioMime: payload.audioMime || "audio/mpeg",
     audioError: payload.audioError || "",
     localAudioUrl: payload.localAudioUrl || "",
-    localAudioMime: payload.localAudioMime || "audio/wav"
+    localAudioMime: payload.localAudioMime || "audio/wav",
+    requestAudioBase64: payload.requestAudioBase64 || "",
+    requestAudioFormat: payload.requestAudioFormat || "wav",
+    audioSamples: payload.audioSamples || null,
+    audioSampleRate: payload.audioSampleRate || TARGET_RATE
   };
   thread.messages.push(message);
   state.activeThreadId = thread.id;
