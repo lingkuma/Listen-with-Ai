@@ -191,6 +191,32 @@ textarea { min-height: 120px; resize: vertical; }
   color: var(--muted);
   font-size: 14px;
 }
+.prompt-template-panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #f6f2e8;
+  border: 1px solid var(--line);
+}
+.prompt-template-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.prompt-template-actions button:disabled {
+  cursor: not-allowed;
+}
+input[readonly],
+textarea[readonly] {
+  background: #f2eee6;
+  color: var(--muted);
+}
+textarea[readonly] {
+  resize: none;
+}
+
 .tts-player {
   display: grid;
   gap: 10px;

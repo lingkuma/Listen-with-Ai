@@ -127,9 +127,20 @@
           <select id="promptTemplateSelect"></select>
           <span id="promptTemplateHelp" class="hint">可先选一个最接近的回答风格，再按你的需要微调。</span>
         </label>
+        <div class="prompt-template-panel">
+          <label>模板名称
+            <input id="promptTemplateNameInput" placeholder="例如：我的英语查词模板" />
+          </label>
+          <span id="promptTemplateStatus" class="hint">系统内置模板只读；如果想修改，请先复制一份副本。</span>
+          <div class="prompt-template-actions">
+            <button id="savePromptTemplateButton" type="button">保存模板</button>
+            <button id="duplicatePromptTemplateButton" type="button" class="secondary-button">复制为副本</button>
+            <button id="deletePromptTemplateButton" type="button" class="secondary-button">删除模板</button>
+          </div>
+        </div>
         <label>提示词
           <textarea id="promptInput">用户正在用播客练习听力。你会同时收到播客中的声音，以及用户自己的跟读、复述或提问。请帮助用户理解刚才那段内容，优先指出可能没听懂的词、短语和关键意思，并给出简洁、可继续边听边验证的说明。</textarea>
-          <span class="hint">选择模板后会自动填入下方；你也可以继续修改，修改后会自动切回“用户自定义”。</span>
+          <span class="hint">系统模板不可直接修改；选择“新建自定义模板”或先复制内置模板后，再编辑并保存。</span>
         </label>
       </article>
 

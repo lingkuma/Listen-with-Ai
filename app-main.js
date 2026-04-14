@@ -2,7 +2,7 @@ const $ = (id) => document.getElementById(id);
 const els = {
   status: $("recordingStatus"), buffer: $("bufferStatus"), range: $("rangeStatus"), mime: $("mimeLabel"),
   clip: $("clipSeconds"), format: $("audioFormat"), mode: $("apiMode"), url: $("apiUrl"), key: $("apiKey"),
-  model: $("apiModel"), promptTemplate: $("promptTemplateSelect"), promptTemplateHelp: $("promptTemplateHelp"), prompt: $("promptInput"), send: $("sendButton"), newChat: $("newChatButton"),
+  model: $("apiModel"), promptTemplate: $("promptTemplateSelect"), promptTemplateHelp: $("promptTemplateHelp"), promptTemplateName: $("promptTemplateNameInput"), promptTemplateStatus: $("promptTemplateStatus"), prompt: $("promptInput"), savePromptTemplate: $("savePromptTemplateButton"), duplicatePromptTemplate: $("duplicatePromptTemplateButton"), deletePromptTemplate: $("deletePromptTemplateButton"), send: $("sendButton"), newChat: $("newChatButton"),
   conversationList: $("conversationList"), ttsProvider: $("ttsProvider"), ttsOpenAiSettings: $("ttsOpenAiSettings"),
   ttsOpenAiUrl: $("ttsOpenAiUrl"), ttsOpenAiKey: $("ttsOpenAiKey"), ttsOpenAiModel: $("ttsOpenAiModel"),
   ttsOpenAiVoice: $("ttsOpenAiVoice"), ttsMiniMaxSettings: $("ttsMiniMaxSettings"), ttsMiniMaxEndpoint: $("ttsMiniMaxEndpoint"),
@@ -14,8 +14,10 @@ const els = {
 const STORAGE_KEY = "listen-with-ai-settings";
 const TTS_CACHE_NAME = "listen-with-ai-tts-v1";
 const DEFAULT_PROMPT = "用户正在用播客练习听力。你会同时收到播客中的声音，以及用户自己的跟读、复述或提问。请帮助用户理解刚才那段内容，优先指出可能没听懂的词、短语和关键意思，并给出简洁、可继续边听边验证的说明。";
-const PROMPT_TEMPLATE_CONFIGS = [
-  { key: "custom", label: "用户自定义", description: "保留你自己的提示词，适合已经有固定写法时使用。", prompt: DEFAULT_PROMPT },
+const NEW_PROMPT_TEMPLATE_ID = "__new_custom__";
+const CUSTOM_PROMPT_TEMPLATE_PREFIX = "custom:";
+const DEFAULT_CUSTOM_PROMPT_TEMPLATE_NAME = "我的自定义模板";
+const BUILTIN_PROMPT_TEMPLATE_CONFIGS = [
   { key: "tutor", label: "助教角色，非角色扮演", description: "更像语言助教，适合查词、复听和快速解释。", prompt: `用户正在通过博客学习新语言，请回答用户的问题，帮助用户理解博客的内容。
 不要说很多废话，用户主要是想知道那些单词没听懂，而你的回答要像口语一样简洁，精确。
 输入内容一般是前段部分是播客的音频，然后用户的提问。
@@ -58,7 +60,7 @@ const state = {
   stream: null, ctx: null, source: null, processor: null, sink: null, queue: [], total: 0,
   sampleRate: 48000, sending: false, threads: [], activeThreadId: null,
   nextThreadId: 1, nextMessageId: 1, ttsCache: new Map(), ttsObjectUrls: new Set(), localAudioObjectUrls: new Set(),
-  lastClipValue: "", customPromptDraft: DEFAULT_PROMPT
+  lastClipValue: "", customPromptTemplates: [], promptTemplateDraft: { name: DEFAULT_CUSTOM_PROMPT_TEMPLATE_NAME, prompt: DEFAULT_PROMPT }
 };
 
 renderPromptTemplateOptions();
@@ -121,48 +123,135 @@ function handleClipChange() {
   updateStats();
   persistSettings();
 }
-function getPromptTemplateKeys() {
-  return PROMPT_TEMPLATE_CONFIGS.map((item) => item.key);
+function normalizePromptTemplateName(name) {
+  return (name || "").trim() || DEFAULT_CUSTOM_PROMPT_TEMPLATE_NAME;
 }
-function getPromptTemplateConfig(templateKey) {
-  return PROMPT_TEMPLATE_CONFIGS.find((item) => item.key === templateKey) || PROMPT_TEMPLATE_CONFIGS[0];
+function normalizePromptTemplatePrompt(prompt) {
+  return (prompt || "").trim() || DEFAULT_PROMPT;
 }
-function getPromptTemplatePrompt(templateKey) {
-  return getPromptTemplateConfig(templateKey).prompt || DEFAULT_PROMPT;
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+}
+function generateCustomPromptTemplateId() {
+  return `${CUSTOM_PROMPT_TEMPLATE_PREFIX}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+function getBuiltinPromptTemplateKeys() {
+  return BUILTIN_PROMPT_TEMPLATE_CONFIGS.map((item) => item.key);
+}
+function getBuiltinPromptTemplateConfig(templateKey) {
+  return BUILTIN_PROMPT_TEMPLATE_CONFIGS.find((item) => item.key === templateKey) || null;
+}
+function getCustomPromptTemplate(templateId) {
+  return state.customPromptTemplates.find((item) => item.id === templateId) || null;
+}
+function getSelectedPromptTemplateId() {
+  return els.promptTemplate?.value || "";
+}
+function getSelectedPromptTemplate() {
+  const templateId = getSelectedPromptTemplateId();
+  if (templateId === NEW_PROMPT_TEMPLATE_ID) return { id: templateId, type: "draft", label: "新建自定义模板", description: "先输入模板名和提示词，再点击保存即可生成新的下拉模板。", name: state.promptTemplateDraft.name, prompt: state.promptTemplateDraft.prompt };
+  const builtin = getBuiltinPromptTemplateConfig(templateId);
+  if (builtin) return { ...builtin, id: builtin.key, type: "builtin", name: builtin.label };
+  const custom = getCustomPromptTemplate(templateId);
+  if (custom) return { ...custom, type: "custom", description: "这是你保存的自定义模板，可以继续修改、复制或删除。" };
+  return { id: NEW_PROMPT_TEMPLATE_ID, type: "draft", label: "新建自定义模板", description: "先输入模板名和提示词，再点击保存即可生成新的下拉模板。", name: state.promptTemplateDraft.name, prompt: state.promptTemplateDraft.prompt };
+}
+function isKnownPromptTemplate(templateId) {
+  return templateId === NEW_PROMPT_TEMPLATE_ID || Boolean(getBuiltinPromptTemplateConfig(templateId)) || Boolean(getCustomPromptTemplate(templateId));
+}
+function findMatchingBuiltinPromptTemplate(prompt) {
+  return BUILTIN_PROMPT_TEMPLATE_CONFIGS.find((item) => item.prompt === prompt)?.key || "";
+}
+function renderPromptTemplateOptions(selectedId = getSelectedPromptTemplateId()) {
+  if (!els.promptTemplate) return;
+  const builtinOptions = BUILTIN_PROMPT_TEMPLATE_CONFIGS.map((item) => `<option value="${item.key}">${escapeHtml(item.label)}</option>`).join("");
+  const customOptions = state.customPromptTemplates.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join("");
+  els.promptTemplate.innerHTML = [
+    `<optgroup label="系统内置模板">${builtinOptions}</optgroup>`,
+    state.customPromptTemplates.length ? `<optgroup label="我的模板">${customOptions}</optgroup>` : "",
+    `<optgroup label="模板操作"><option value="${NEW_PROMPT_TEMPLATE_ID}">＋ 新建自定义模板</option></optgroup>`
+  ].join("");
+  const fallbackId = state.customPromptTemplates[0]?.id || getBuiltinPromptTemplateKeys()[0] || NEW_PROMPT_TEMPLATE_ID;
+  els.promptTemplate.value = isKnownPromptTemplate(selectedId) ? selectedId : fallbackId;
 }
 function syncPromptTemplateHelp() {
-  if (els.promptTemplateHelp) els.promptTemplateHelp.textContent = getPromptTemplateConfig(els.promptTemplate.value).description;
+  if (!els.promptTemplateHelp) return;
+  els.promptTemplateHelp.textContent = getSelectedPromptTemplate().description;
 }
-function renderPromptTemplateOptions() {
-  if (!els.promptTemplate) return;
-  els.promptTemplate.innerHTML = PROMPT_TEMPLATE_CONFIGS
-    .map((item) => `<option value="${item.key}">${item.label}</option>`)
-    .join("");
+function syncPromptTemplateEditor() {
+  const template = getSelectedPromptTemplate();
+  const isBuiltin = template.type === "builtin";
+  const isCustom = template.type === "custom";
+  const editorName = isBuiltin ? template.name : state.promptTemplateDraft.name;
+  const editorPrompt = isBuiltin ? template.prompt : state.promptTemplateDraft.prompt;
+  els.promptTemplateName.value = editorName;
+  els.prompt.value = editorPrompt;
+  els.promptTemplateName.readOnly = isBuiltin;
+  els.prompt.readOnly = isBuiltin;
+  els.savePromptTemplate.disabled = isBuiltin;
+  els.deletePromptTemplate.disabled = !isCustom;
+  els.duplicatePromptTemplate.disabled = template.type === "draft";
+  els.promptTemplateStatus.textContent = isBuiltin
+    ? "当前是系统内置模板，只能查看；如果想修改，请先复制为副本。"
+    : isCustom
+      ? "当前是你的自定义模板。修改后点击“保存模板”即可覆盖更新。"
+      : "正在新建自定义模板。填写模板名和提示词后，点击“保存模板”创建。";
   syncPromptTemplateHelp();
 }
-function isKnownPromptTemplate(templateKey) {
-  return getPromptTemplateKeys().includes(templateKey);
+function setPromptTemplateDraft(templateId) {
+  const custom = getCustomPromptTemplate(templateId);
+  if (custom) state.promptTemplateDraft = { name: custom.name, prompt: custom.prompt };
+  else if (templateId === NEW_PROMPT_TEMPLATE_ID && !state.promptTemplateDraft?.prompt) state.promptTemplateDraft = { name: DEFAULT_CUSTOM_PROMPT_TEMPLATE_NAME, prompt: DEFAULT_PROMPT };
 }
-function findMatchingPromptTemplate(prompt) {
-  return PROMPT_TEMPLATE_CONFIGS.find((item) => item.key !== "custom" && item.prompt === prompt)?.key || "";
+function applyPromptTemplateSelection(templateId, { persist = true } = {}) {
+  if (!isKnownPromptTemplate(templateId)) templateId = NEW_PROMPT_TEMPLATE_ID;
+  setPromptTemplateDraft(templateId);
+  renderPromptTemplateOptions(templateId);
+  syncPromptTemplateEditor();
+  if (persist) persistSettings();
 }
 function handlePromptTemplateChange() {
-  const templateKey = isKnownPromptTemplate(els.promptTemplate.value) ? els.promptTemplate.value : "custom";
-  els.promptTemplate.value = templateKey;
-  els.prompt.value = templateKey === "custom" ? (state.customPromptDraft || DEFAULT_PROMPT) : getPromptTemplatePrompt(templateKey);
-  syncPromptTemplateHelp();
+  applyPromptTemplateSelection(els.promptTemplate.value);
+}
+function handlePromptTemplateNameChange() {
+  if (getSelectedPromptTemplate().type === "builtin") return;
+  state.promptTemplateDraft.name = normalizePromptTemplateName(els.promptTemplateName.value);
   persistSettings();
 }
 function handlePromptInputChange() {
-  const prompt = els.prompt.value.trim();
-  const matchedTemplate = findMatchingPromptTemplate(prompt);
-  if (matchedTemplate) els.promptTemplate.value = matchedTemplate;
-  else {
-    state.customPromptDraft = prompt || DEFAULT_PROMPT;
-    els.promptTemplate.value = "custom";
-  }
-  syncPromptTemplateHelp();
+  if (getSelectedPromptTemplate().type === "builtin") return;
+  state.promptTemplateDraft.prompt = normalizePromptTemplatePrompt(els.prompt.value);
   persistSettings();
+}
+function handleSavePromptTemplate() {
+  const templateId = getSelectedPromptTemplateId();
+  const name = normalizePromptTemplateName(els.promptTemplateName.value);
+  const prompt = normalizePromptTemplatePrompt(els.prompt.value);
+  if (templateId === NEW_PROMPT_TEMPLATE_ID) state.customPromptTemplates.unshift({ id: generateCustomPromptTemplateId(), name, prompt });
+  else {
+    const target = getCustomPromptTemplate(templateId);
+    if (!target) return;
+    target.name = name;
+    target.prompt = prompt;
+  }
+  state.promptTemplateDraft = { name, prompt };
+  applyPromptTemplateSelection(templateId === NEW_PROMPT_TEMPLATE_ID ? state.customPromptTemplates[0].id : templateId);
+}
+function handleDuplicatePromptTemplate() {
+  const template = getSelectedPromptTemplate();
+  const name = normalizePromptTemplateName(`${template.name || template.label || DEFAULT_CUSTOM_PROMPT_TEMPLATE_NAME} 副本`);
+  const prompt = template.type === "builtin" ? template.prompt : normalizePromptTemplatePrompt(els.prompt.value);
+  const duplicated = { id: generateCustomPromptTemplateId(), name, prompt };
+  state.customPromptTemplates.unshift(duplicated);
+  state.promptTemplateDraft = { name: duplicated.name, prompt: duplicated.prompt };
+  applyPromptTemplateSelection(duplicated.id);
+}
+function handleDeletePromptTemplate() {
+  const templateId = getSelectedPromptTemplateId();
+  if (!getCustomPromptTemplate(templateId)) return;
+  state.customPromptTemplates = state.customPromptTemplates.filter((item) => item.id !== templateId);
+  state.promptTemplateDraft = { name: DEFAULT_CUSTOM_PROMPT_TEMPLATE_NAME, prompt: DEFAULT_PROMPT };
+  applyPromptTemplateSelection(state.customPromptTemplates[0]?.id || getBuiltinPromptTemplateKeys()[0] || NEW_PROMPT_TEMPLATE_ID);
 }
 async function sendClip(action = "continue") {
   if (state.sending) return;
@@ -666,28 +755,34 @@ function detectAudioMime(base64) {
   return "audio/wav";
 }
 function restoreSettings() {
+  let activeTemplateId = getBuiltinPromptTemplateKeys()[0] || NEW_PROMPT_TEMPLATE_ID;
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
     if (saved) {
       ["clip", "format", "mode", "url", "key", "model", "ttsProvider", "ttsOpenAiUrl", "ttsOpenAiKey", "ttsOpenAiModel", "ttsOpenAiVoice", "ttsMiniMaxEndpoint", "ttsMiniMaxKey", "ttsMiniMaxGroupId", "ttsMiniMaxModel", "ttsMiniMaxLanguageBooster", "ttsMiniMaxVoiceId", "ttsMiniMaxSpeed", "ttsMiniMaxVoiceSettings", "ttsPrompt"].forEach((k) => saved[k] != null && (els[k].value = saved[k]));
       els.ttsAuto.checked = Boolean(saved.ttsAuto);
-      state.customPromptDraft = (saved.customPromptDraft || DEFAULT_PROMPT).trim() || DEFAULT_PROMPT;
-      const savedPrompt = (saved.prompt || "").trim();
-      const savedTemplate = isKnownPromptTemplate(saved.promptTemplate) ? saved.promptTemplate : "";
-      const matchedTemplate = savedPrompt ? findMatchingPromptTemplate(savedPrompt) : "";
-      const activeTemplate = savedTemplate || matchedTemplate || "custom";
-      els.promptTemplate.value = activeTemplate;
-      els.prompt.value = activeTemplate === "custom"
-        ? (savedPrompt || state.customPromptDraft || DEFAULT_PROMPT)
-        : getPromptTemplatePrompt(activeTemplate);
-      if (activeTemplate === "custom") state.customPromptDraft = els.prompt.value.trim() || DEFAULT_PROMPT;
+      state.customPromptTemplates = Array.isArray(saved.customPromptTemplates)
+        ? saved.customPromptTemplates.map((item) => item?.id ? ({ id: String(item.id), name: normalizePromptTemplateName(item.name), prompt: normalizePromptTemplatePrompt(item.prompt) }) : null).filter(Boolean)
+        : [];
+      state.promptTemplateDraft = {
+        name: normalizePromptTemplateName(saved.promptTemplateDraft?.name || saved.promptTemplateDraftName || DEFAULT_CUSTOM_PROMPT_TEMPLATE_NAME),
+        prompt: normalizePromptTemplatePrompt(saved.promptTemplateDraft?.prompt || saved.promptTemplateDraftPrompt || saved.customPromptDraft || DEFAULT_PROMPT)
+      };
+      const legacyPrompt = normalizePromptTemplatePrompt(saved.prompt || saved.customPromptDraft || DEFAULT_PROMPT);
+      if (!state.customPromptTemplates.length && saved.promptTemplate === "custom") {
+        const migrated = { id: generateCustomPromptTemplateId(), name: normalizePromptTemplateName(saved.promptTemplateDraft?.name || "我之前的自定义模板"), prompt: legacyPrompt };
+        state.customPromptTemplates.unshift(migrated);
+        state.promptTemplateDraft = { name: migrated.name, prompt: migrated.prompt };
+      } else if (!state.customPromptTemplates.length && saved.prompt && !findMatchingBuiltinPromptTemplate(legacyPrompt) && legacyPrompt !== DEFAULT_PROMPT) {
+        state.customPromptTemplates.unshift({ id: generateCustomPromptTemplateId(), name: "我之前的自定义模板", prompt: legacyPrompt });
+      }
+      const savedSelectedId = typeof saved.selectedPromptTemplateId === "string" ? saved.selectedPromptTemplateId : "";
+      const legacySelectedId = getBuiltinPromptTemplateConfig(saved.promptTemplate)?.key || (saved.promptTemplate === "custom" ? (state.customPromptTemplates[0]?.id || NEW_PROMPT_TEMPLATE_ID) : "");
+      activeTemplateId = savedSelectedId || legacySelectedId || findMatchingBuiltinPromptTemplate(legacyPrompt) || state.customPromptTemplates[0]?.id || activeTemplateId;
     }
   } catch {}
-  if (!els.promptTemplate.value || !isKnownPromptTemplate(els.promptTemplate.value)) els.promptTemplate.value = "custom";
-  if (!els.prompt.value.trim()) els.prompt.value = els.promptTemplate.value === "custom"
-    ? (state.customPromptDraft || DEFAULT_PROMPT)
-    : getPromptTemplatePrompt(els.promptTemplate.value);
-  syncPromptTemplateHelp();
+  if (!state.promptTemplateDraft?.name || !state.promptTemplateDraft?.prompt) state.promptTemplateDraft = { name: DEFAULT_CUSTOM_PROMPT_TEMPLATE_NAME, prompt: DEFAULT_PROMPT };
+  applyPromptTemplateSelection(activeTemplateId, { persist: false });
   if (!els.ttsProvider.value) els.ttsProvider.value = "openai";
   els.ttsMiniMaxEndpoint.value = normalizeMiniMaxEndpoint(els.ttsMiniMaxEndpoint.value || DEFAULT_MINIMAX_ENDPOINT);
   if (!els.ttsMiniMaxModel.value) els.ttsMiniMaxModel.value = "speech-01-turbo";
@@ -699,7 +794,11 @@ function bindPersistEvents() {
   [els.format, els.mode, els.url, els.key, els.model, els.ttsProvider, els.ttsOpenAiUrl, els.ttsOpenAiKey, els.ttsOpenAiModel, els.ttsOpenAiVoice, els.ttsMiniMaxEndpoint, els.ttsMiniMaxKey, els.ttsMiniMaxGroupId, els.ttsMiniMaxModel, els.ttsMiniMaxLanguageBooster, els.ttsMiniMaxVoiceId, els.ttsMiniMaxSpeed, els.ttsMiniMaxVoiceSettings, els.ttsPrompt].forEach((el) => ["input", "change"].forEach((evt) => el.addEventListener(evt, persistSettings)));
   els.clip.addEventListener("change", handleClipChange);
   els.promptTemplate.addEventListener("change", handlePromptTemplateChange);
+  ["input", "change"].forEach((evt) => els.promptTemplateName.addEventListener(evt, handlePromptTemplateNameChange));
   ["input", "change"].forEach((evt) => els.prompt.addEventListener(evt, handlePromptInputChange));
+  els.savePromptTemplate.addEventListener("click", handleSavePromptTemplate);
+  els.duplicatePromptTemplate.addEventListener("click", handleDuplicatePromptTemplate);
+  els.deletePromptTemplate.addEventListener("click", handleDeletePromptTemplate);
   els.ttsProvider.addEventListener("change", syncTtsProviderUI);
   els.ttsMiniMaxEndpoint.addEventListener("blur", () => {
     els.ttsMiniMaxEndpoint.value = normalizeMiniMaxEndpoint(els.ttsMiniMaxEndpoint.value || DEFAULT_MINIMAX_ENDPOINT);
@@ -710,18 +809,20 @@ function bindPersistEvents() {
 function persistSettings() {
   try {
     const ttsMiniMaxEndpoint = normalizeMiniMaxEndpoint(els.ttsMiniMaxEndpoint.value || DEFAULT_MINIMAX_ENDPOINT);
-    const prompt = (els.prompt.value || "").trim() || DEFAULT_PROMPT;
-    const promptTemplate = isKnownPromptTemplate(els.promptTemplate.value) ? els.promptTemplate.value : "custom";
-    const customPromptDraft = promptTemplate === "custom" ? prompt : (state.customPromptDraft || DEFAULT_PROMPT);
+    const selectedPromptTemplateId = isKnownPromptTemplate(getSelectedPromptTemplateId()) ? getSelectedPromptTemplateId() : NEW_PROMPT_TEMPLATE_ID;
+    const prompt = normalizePromptTemplatePrompt(els.prompt.value);
+    if (getSelectedPromptTemplate().type !== "builtin") state.promptTemplateDraft = { name: normalizePromptTemplateName(els.promptTemplateName.value), prompt };
     els.ttsMiniMaxEndpoint.value = ttsMiniMaxEndpoint;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       clip: els.clip.value, format: els.format.value, mode: els.mode.value, url: els.url.value, key: els.key.value,
-      model: els.model.value, prompt, promptTemplate, customPromptDraft, ttsProvider: els.ttsProvider.value, ttsOpenAiUrl: els.ttsOpenAiUrl.value,
-      ttsOpenAiKey: els.ttsOpenAiKey.value, ttsOpenAiModel: els.ttsOpenAiModel.value, ttsOpenAiVoice: els.ttsOpenAiVoice.value,
-      ttsMiniMaxEndpoint, ttsMiniMaxKey: els.ttsMiniMaxKey.value, ttsMiniMaxGroupId: els.ttsMiniMaxGroupId.value,
-      ttsMiniMaxModel: els.ttsMiniMaxModel.value, ttsMiniMaxLanguageBooster: els.ttsMiniMaxLanguageBooster.value,
-      ttsMiniMaxVoiceId: els.ttsMiniMaxVoiceId.value, ttsMiniMaxSpeed: els.ttsMiniMaxSpeed.value,
-      ttsMiniMaxVoiceSettings: els.ttsMiniMaxVoiceSettings.value, ttsPrompt: els.ttsPrompt.value, ttsAuto: els.ttsAuto.checked
+      model: els.model.value, prompt, promptTemplate: getBuiltinPromptTemplateConfig(selectedPromptTemplateId)?.key || "custom", selectedPromptTemplateId,
+      customPromptDraft: state.promptTemplateDraft.prompt, customPromptTemplates: state.customPromptTemplates, promptTemplateDraft: state.promptTemplateDraft,
+      ttsProvider: els.ttsProvider.value, ttsOpenAiUrl: els.ttsOpenAiUrl.value, ttsOpenAiKey: els.ttsOpenAiKey.value,
+      ttsOpenAiModel: els.ttsOpenAiModel.value, ttsOpenAiVoice: els.ttsOpenAiVoice.value, ttsMiniMaxEndpoint,
+      ttsMiniMaxKey: els.ttsMiniMaxKey.value, ttsMiniMaxGroupId: els.ttsMiniMaxGroupId.value, ttsMiniMaxModel: els.ttsMiniMaxModel.value,
+      ttsMiniMaxLanguageBooster: els.ttsMiniMaxLanguageBooster.value, ttsMiniMaxVoiceId: els.ttsMiniMaxVoiceId.value,
+      ttsMiniMaxSpeed: els.ttsMiniMaxSpeed.value, ttsMiniMaxVoiceSettings: els.ttsMiniMaxVoiceSettings.value,
+      ttsPrompt: els.ttsPrompt.value, ttsAuto: els.ttsAuto.checked
     }));
   } catch {}
 }
