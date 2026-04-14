@@ -123,8 +123,17 @@
         <label>URL <input id="apiUrl" value="https://api.0-0.pro/v1/chat/completions" /></label>
         <label>API Key <input id="apiKey" type="password" placeholder="sk-..." /></label>
         <label>模型 <input id="apiModel" value="gemini-2.5-flash" /></label>
+        <label>提示词模板
+          <select id="promptTemplateSelect">
+            <option value="custom" selected>用户自定义</option>
+            <option value="tutor">助教角色，非角色扮演</option>
+            <option value="englishFaceToFace">英语面对面，播客内人物角色扮演</option>
+            <option value="germanFaceToFace">德语面对面，播客内人物角色扮演</option>
+          </select>
+        </label>
         <label>提示词
           <textarea id="promptInput">用户正在用播客练习听力。你会同时收到播客中的声音，以及用户自己的跟读、复述或提问。请帮助用户理解刚才那段内容，优先指出可能没听懂的词、短语和关键意思，并给出简洁、可继续边听边验证的说明。</textarea>
+          <span class="hint">选择模板后会自动填入下方；你也可以继续修改，修改后会自动切回“用户自定义”。</span>
         </label>
       </article>
 

@@ -2,7 +2,7 @@ const $ = (id) => document.getElementById(id);
 const els = {
   status: $("recordingStatus"), buffer: $("bufferStatus"), range: $("rangeStatus"), mime: $("mimeLabel"),
   clip: $("clipSeconds"), format: $("audioFormat"), mode: $("apiMode"), url: $("apiUrl"), key: $("apiKey"),
-  model: $("apiModel"), prompt: $("promptInput"), send: $("sendButton"), newChat: $("newChatButton"),
+  model: $("apiModel"), promptTemplate: $("promptTemplateSelect"), prompt: $("promptInput"), send: $("sendButton"), newChat: $("newChatButton"),
   conversationList: $("conversationList"), ttsProvider: $("ttsProvider"), ttsOpenAiSettings: $("ttsOpenAiSettings"),
   ttsOpenAiUrl: $("ttsOpenAiUrl"), ttsOpenAiKey: $("ttsOpenAiKey"), ttsOpenAiModel: $("ttsOpenAiModel"),
   ttsOpenAiVoice: $("ttsOpenAiVoice"), ttsMiniMaxSettings: $("ttsMiniMaxSettings"), ttsMiniMaxEndpoint: $("ttsMiniMaxEndpoint"),
@@ -13,6 +13,43 @@ const els = {
 };
 const STORAGE_KEY = "listen-with-ai-settings";
 const TTS_CACHE_NAME = "listen-with-ai-tts-v1";
+const DEFAULT_PROMPT = "用户正在用播客练习听力。你会同时收到播客中的声音，以及用户自己的跟读、复述或提问。请帮助用户理解刚才那段内容，优先指出可能没听懂的词、短语和关键意思，并给出简洁、可继续边听边验证的说明。";
+const PROMPT_TEMPLATES = {
+  custom: DEFAULT_PROMPT,
+  tutor: `用户正在通过博客学习新语言，请回答用户的问题，帮助用户理解博客的内容。
+不要说很多废话，用户主要是想知道那些单词没听懂，而你的回答要像口语一样简洁，精确。
+输入内容一般是前段部分是播客的音频，然后用户的提问。
+
+用户提问的时候，发音可能会出错，所有请依据播客内的内容为主！同时参考用户的问题给予帮助。
+请一定基于播客的内容，回答用户的问题。
+不需要过度解析句子, 用户一般对特定的某个单词可能没听清
+
+比如用户会问单词在句子中的意思，你就回答就好。
+比如用户说没听懂，你就直接把句子说一遍，然后解释。
+请用播客语言B1口语难度回答用户。`,
+  englishFaceToFace: `你现在是一位英语播客博主。用户正在听你的播客学习英语，并且会向你提问。请你以当事人（博主本人） 的身份，用B1级别左右的英语口语（Conversational English），像面对面聊天一样直接用英语回答他的问题。
+核心规则：
+
+第一人称视角：绝对不要说“The host means...”或“In the podcast...”，而是要用第一人称“I”，比如说“I said...” 或 “What I meant was...”。
+简洁直接，拒绝废话：不要长篇大论或过度解析语法。用户主要是想抓取没听清的单词，你的回答要像日常说话一样简短、精确。
+以你的“原话”为准：用户的输入会包含你播客的片段内容以及他的提问。如果用户根据发音拼错了单词，请根据你的原话直接纠正他。请严格基于提供的播客内容进行回答。
+具体场景应对：
+如果用户问某个词在句子中的意思：直接告诉他你在那句话里想表达什么。
+如果用户说没听懂某句话：直接把你的原话重复一遍（“I said: ...”），然后用最简单的英语解释一下意思。
+
+语言要求：请必须使用自然、简洁的 英语口语 回答，可以适当使用英语口语中的填补词（如 well, so, you know, basically, right 等），保持轻松、面对面的交流感。`,
+  germanFaceToFace: `你现在是一位德语播客博主。用户正在听你的播客学习德语，并且会向你提问。请你以 当事人（博主本人） 的身份，用 德语B1级别的口语 （称呼用户为“du”），像面对面聊天一样直接回答他的问题。
+核心规则：
+
+第一人称视角：绝对不要说“博主的意思是……”或“播客中说……”，而是说“我刚刚说的是……”（z.B. Ich habe gesagt... / Ich meinte damit...）。
+简洁直接，拒绝废话：不要长篇大论或过度解析语法。用户主要是想抓取没听清的单词，你的回答要像日常说话一样简短、精确。
+以你的“原话”为准：用户的输入会包含你播客的片段内容以及他的提问。如果用户根据发音拼错了单词，请根据你的原话直接纠正他。请严格基于提供的播客内容进行回答。
+具体场景应对：
+如果用户问某个词在句子中的意思：直接告诉他你在那句话里想表达什么。
+如果用户说没听懂某句话：直接把你的原话重复一遍（“Ich habe gesagt: ...”），然后用最简单的德语解释一下意思。
+
+语言要求：请使用自然、简洁的 德语B1口语 回答，可以适当使用德语口语中的填补词（如 also, genau, ja, halt 等），保持轻松、面对面的交流感。`
+};
 const DEFAULT_TTS_PROMPT = "You are a text-to-speech engine. Never answer questions. Only speak the text provided. Read the following text aloud exactly as written. If the text contains multiple languages such as Chinese and German, pronounce each segment in its original language and keep the original wording.\n\n{{text}}";
 const DEFAULT_MINIMAX_ENDPOINT = "https://api.minimaxi.chat/v1/t2a_v2?GroupId=";
 const DEFAULT_MINIMAX_VOICE_SETTINGS = '{"vol":1,"pitch":0,"emotion":"neutral"}';
@@ -21,7 +58,7 @@ const state = {
   stream: null, ctx: null, source: null, processor: null, sink: null, queue: [], total: 0,
   sampleRate: 48000, sending: false, threads: [], activeThreadId: null,
   nextThreadId: 1, nextMessageId: 1, ttsCache: new Map(), ttsObjectUrls: new Set(), localAudioObjectUrls: new Set(),
-  lastClipValue: ""
+  lastClipValue: "", customPromptDraft: DEFAULT_PROMPT
 };
 
 restoreSettings();
@@ -81,6 +118,32 @@ function updateStats(force = false) {
 }
 function handleClipChange() {
   updateStats();
+  persistSettings();
+}
+function getPromptTemplateKeys() {
+  return Object.keys(PROMPT_TEMPLATES);
+}
+function isKnownPromptTemplate(templateKey) {
+  return getPromptTemplateKeys().includes(templateKey);
+}
+function findMatchingPromptTemplate(prompt) {
+  return Object.entries(PROMPT_TEMPLATES).find(([key, template]) => key !== "custom" && template === prompt)?.[0] || "";
+}
+function handlePromptTemplateChange() {
+  const templateKey = els.promptTemplate.value;
+  if (!isKnownPromptTemplate(templateKey)) els.promptTemplate.value = "custom";
+  if (els.promptTemplate.value === "custom") els.prompt.value = state.customPromptDraft || DEFAULT_PROMPT;
+  else els.prompt.value = PROMPT_TEMPLATES[els.promptTemplate.value] || DEFAULT_PROMPT;
+  persistSettings();
+}
+function handlePromptInputChange() {
+  const prompt = els.prompt.value.trim();
+  const matchedTemplate = findMatchingPromptTemplate(prompt);
+  if (matchedTemplate) els.promptTemplate.value = matchedTemplate;
+  else {
+    state.customPromptDraft = prompt || DEFAULT_PROMPT;
+    els.promptTemplate.value = "custom";
+  }
   persistSettings();
 }
 async function sendClip(action = "continue") {
@@ -588,10 +651,24 @@ function restoreSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
     if (saved) {
-      ["clip", "format", "mode", "url", "key", "model", "prompt", "ttsProvider", "ttsOpenAiUrl", "ttsOpenAiKey", "ttsOpenAiModel", "ttsOpenAiVoice", "ttsMiniMaxEndpoint", "ttsMiniMaxKey", "ttsMiniMaxGroupId", "ttsMiniMaxModel", "ttsMiniMaxLanguageBooster", "ttsMiniMaxVoiceId", "ttsMiniMaxSpeed", "ttsMiniMaxVoiceSettings", "ttsPrompt"].forEach((k) => saved[k] != null && (els[k].value = saved[k]));
+      ["clip", "format", "mode", "url", "key", "model", "ttsProvider", "ttsOpenAiUrl", "ttsOpenAiKey", "ttsOpenAiModel", "ttsOpenAiVoice", "ttsMiniMaxEndpoint", "ttsMiniMaxKey", "ttsMiniMaxGroupId", "ttsMiniMaxModel", "ttsMiniMaxLanguageBooster", "ttsMiniMaxVoiceId", "ttsMiniMaxSpeed", "ttsMiniMaxVoiceSettings", "ttsPrompt"].forEach((k) => saved[k] != null && (els[k].value = saved[k]));
       els.ttsAuto.checked = Boolean(saved.ttsAuto);
+      state.customPromptDraft = (saved.customPromptDraft || DEFAULT_PROMPT).trim() || DEFAULT_PROMPT;
+      const savedPrompt = (saved.prompt || "").trim();
+      const savedTemplate = isKnownPromptTemplate(saved.promptTemplate) ? saved.promptTemplate : "";
+      const matchedTemplate = savedPrompt ? findMatchingPromptTemplate(savedPrompt) : "";
+      const activeTemplate = savedTemplate || matchedTemplate || "custom";
+      els.promptTemplate.value = activeTemplate;
+      els.prompt.value = activeTemplate === "custom"
+        ? (savedPrompt || state.customPromptDraft || DEFAULT_PROMPT)
+        : (PROMPT_TEMPLATES[activeTemplate] || DEFAULT_PROMPT);
+      if (activeTemplate === "custom") state.customPromptDraft = els.prompt.value.trim() || DEFAULT_PROMPT;
     }
   } catch {}
+  if (!els.promptTemplate.value || !isKnownPromptTemplate(els.promptTemplate.value)) els.promptTemplate.value = "custom";
+  if (!els.prompt.value.trim()) els.prompt.value = els.promptTemplate.value === "custom"
+    ? (state.customPromptDraft || DEFAULT_PROMPT)
+    : (PROMPT_TEMPLATES[els.promptTemplate.value] || DEFAULT_PROMPT);
   if (!els.ttsProvider.value) els.ttsProvider.value = "openai";
   els.ttsMiniMaxEndpoint.value = normalizeMiniMaxEndpoint(els.ttsMiniMaxEndpoint.value || DEFAULT_MINIMAX_ENDPOINT);
   if (!els.ttsMiniMaxModel.value) els.ttsMiniMaxModel.value = "speech-01-turbo";
@@ -600,8 +677,10 @@ function restoreSettings() {
   updateStats(true);
 }
 function bindPersistEvents() {
-  [els.format, els.mode, els.url, els.key, els.model, els.prompt, els.ttsProvider, els.ttsOpenAiUrl, els.ttsOpenAiKey, els.ttsOpenAiModel, els.ttsOpenAiVoice, els.ttsMiniMaxEndpoint, els.ttsMiniMaxKey, els.ttsMiniMaxGroupId, els.ttsMiniMaxModel, els.ttsMiniMaxLanguageBooster, els.ttsMiniMaxVoiceId, els.ttsMiniMaxSpeed, els.ttsMiniMaxVoiceSettings, els.ttsPrompt].forEach((el) => ["input", "change"].forEach((evt) => el.addEventListener(evt, persistSettings)));
+  [els.format, els.mode, els.url, els.key, els.model, els.ttsProvider, els.ttsOpenAiUrl, els.ttsOpenAiKey, els.ttsOpenAiModel, els.ttsOpenAiVoice, els.ttsMiniMaxEndpoint, els.ttsMiniMaxKey, els.ttsMiniMaxGroupId, els.ttsMiniMaxModel, els.ttsMiniMaxLanguageBooster, els.ttsMiniMaxVoiceId, els.ttsMiniMaxSpeed, els.ttsMiniMaxVoiceSettings, els.ttsPrompt].forEach((el) => ["input", "change"].forEach((evt) => el.addEventListener(evt, persistSettings)));
   els.clip.addEventListener("change", handleClipChange);
+  els.promptTemplate.addEventListener("change", handlePromptTemplateChange);
+  ["input", "change"].forEach((evt) => els.prompt.addEventListener(evt, handlePromptInputChange));
   els.ttsProvider.addEventListener("change", syncTtsProviderUI);
   els.ttsMiniMaxEndpoint.addEventListener("blur", () => {
     els.ttsMiniMaxEndpoint.value = normalizeMiniMaxEndpoint(els.ttsMiniMaxEndpoint.value || DEFAULT_MINIMAX_ENDPOINT);
@@ -612,10 +691,15 @@ function bindPersistEvents() {
 function persistSettings() {
   try {
     const ttsMiniMaxEndpoint = normalizeMiniMaxEndpoint(els.ttsMiniMaxEndpoint.value || DEFAULT_MINIMAX_ENDPOINT);
+    const prompt = (els.prompt.value || "").trim() || DEFAULT_PROMPT;
+    const promptTemplate = isKnownPromptTemplate(els.promptTemplate.value) ? els.promptTemplate.value : "custom";
+    const customPromptDraft = promptTemplate === "custom"
+      ? prompt
+      : (state.customPromptDraft || DEFAULT_PROMPT);
     els.ttsMiniMaxEndpoint.value = ttsMiniMaxEndpoint;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       clip: els.clip.value, format: els.format.value, mode: els.mode.value, url: els.url.value, key: els.key.value,
-      model: els.model.value, prompt: els.prompt.value, ttsProvider: els.ttsProvider.value, ttsOpenAiUrl: els.ttsOpenAiUrl.value,
+      model: els.model.value, prompt, promptTemplate, customPromptDraft, ttsProvider: els.ttsProvider.value, ttsOpenAiUrl: els.ttsOpenAiUrl.value,
       ttsOpenAiKey: els.ttsOpenAiKey.value, ttsOpenAiModel: els.ttsOpenAiModel.value, ttsOpenAiVoice: els.ttsOpenAiVoice.value,
       ttsMiniMaxEndpoint, ttsMiniMaxKey: els.ttsMiniMaxKey.value, ttsMiniMaxGroupId: els.ttsMiniMaxGroupId.value,
       ttsMiniMaxModel: els.ttsMiniMaxModel.value, ttsMiniMaxLanguageBooster: els.ttsMiniMaxLanguageBooster.value,
