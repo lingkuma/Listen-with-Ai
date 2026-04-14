@@ -51,8 +51,35 @@ const response = await fetch(endpoint, {
 4. 去掉每块前面的 `data:`
 5. `JSON.parse(...)`
 6. 从 `json.data.audio` 中拿到十六进制音频块
-7. 转成 `Uint8Array`
-8. 通过 `MediaSource + SourceBuffer(audio/mpeg)` 边下边播
+7. **把所有 `audio` 分片按顺序拼起来**
+8. 转成 `Uint8Array`
+9. 通过 `MediaSource + SourceBuffer(audio/mpeg)` 边下边播
+
+### 非常重要：不要只读最后一个包
+
+MiniMax 的流式返回通常不是一个完整 JSON，而是一串 SSE：
+
+```txt
+data: {"data": {"audio": "4944330400000", "status": 2}}
+
+data: {"data": {"status": 2}}
+```
+
+这里要注意：
+
+- 第一段里有 `data.audio`，这是音频十六进制分片
+- 最后一段可能 **只有 `status`，没有 `audio`**
+- 所以不能写成“只取最后一个 JSON 的 `data.audio`”
+- 正确做法是：**遍历所有 SSE 包，把每个包里的 `data.audio` 收集起来，再 `join('')`**
+
+也就是说，下面这种逻辑是错的：
+
+```js
+const json = JSON.parse(fullText);
+const hexAudio = json.data.audio;
+```
+
+因为流式场景下 `fullText` 往往根本不是单个 JSON，而是多段 `data: ...`。
 
 ## 最小播放代码
 
@@ -84,6 +111,7 @@ function appendHexChunk(hexString) {
   else sourceBuffer.appendBuffer(bytes);
 }
 
+const allHexChunks = [];
 let started = false;
 while (true) {
   const { done, value } = await reader.read();
@@ -101,8 +129,11 @@ while (true) {
     if (!payload || payload === '[DONE]') continue;
 
     const json = JSON.parse(payload);
-    if (!json?.data?.audio) continue;
-    appendHexChunk(json.data.audio);
+    const hexAudio = json?.data?.audio;
+    if (!hexAudio) continue; // status-only 包直接跳过
+
+    allHexChunks.push(hexAudio);
+    appendHexChunk(hexAudio);
 
     if (!started) {
       started = true;
@@ -110,7 +141,11 @@ while (true) {
     }
   }
 }
+
+const fullHexAudio = allHexChunks.join('');
+console.log('完整音频 hex 长度:', fullHexAudio.length);
 ```
+
 
 ## 多触点事件处理
 

@@ -515,7 +515,7 @@ async function requestMiniMaxTtsAudio(text) {
   const body = {
     model: config.model,
     text,
-    stream: false,
+    stream: true,
     output_format: "hex",
     voice_setting,
     audio_setting: { sample_rate: 32000, bitrate: 128000, format: "mp3", channel: 1 }
@@ -525,14 +525,42 @@ async function requestMiniMaxTtsAudio(text) {
   const rawText = await res.text();
   let json = null;
   try { json = JSON.parse(rawText); } catch {}
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}\n${extractTtsError(json) || rawText}`);
-  const hexAudio = json?.data?.audio;
-  if (!hexAudio) throw new Error(extractTtsError(json) || "MiniMax TTS 响应里没有返回 data.audio");
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}\n${extractTtsError(json) || extractMiniMaxSseError(rawText) || rawText}`);
+  const hexAudio = json?.data?.audio || extractMiniMaxSseAudio(rawText);
+  if (!hexAudio) throw new Error(extractTtsError(json) || extractMiniMaxSseError(rawText) || "MiniMax TTS 响应里没有返回可拼接的 data.audio");
   const blob = hexToBlob(hexAudio, "audio/mpeg");
   return { blob, mimeType: blob.type };
 }
 function extractTtsError(json) {
   return json?.base_resp?.status_msg || json?.error?.message || json?.choices?.[0]?.message?.content || json?.message || "";
+}
+function extractMiniMaxSseAudio(rawText) {
+  const chunks = [];
+  for (const payload of extractSsePayloads(rawText)) {
+    let json = null;
+    try { json = JSON.parse(payload); } catch { continue; }
+    if (json?.data?.audio) chunks.push(json.data.audio);
+  }
+  return chunks.join("");
+}
+function extractMiniMaxSseError(rawText) {
+  let lastMessage = "";
+  for (const payload of extractSsePayloads(rawText)) {
+    let json = null;
+    try { json = JSON.parse(payload); } catch { continue; }
+    lastMessage = extractTtsError(json) || lastMessage;
+  }
+  return lastMessage;
+}
+function extractSsePayloads(rawText) {
+  return rawText
+    .split(/\r?\n\r?\n/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .flatMap((block) => block.split(/\r?\n/))
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.replace(/^data:\s*/, "").trim())
+    .filter((payload) => payload && payload !== "[DONE]");
 }
 function base64ToBlob(base64, mimeType) {
   const binary = atob(base64.replace(/\s+/g, ""));
