@@ -2,7 +2,7 @@ const $ = (id) => document.getElementById(id);
 const els = {
   status: $("recordingStatus"), buffer: $("bufferStatus"), range: $("rangeStatus"), mime: $("mimeLabel"),
   clip: $("clipSeconds"), format: $("audioFormat"), mode: $("apiMode"), url: $("apiUrl"), key: $("apiKey"),
-  model: $("apiModel"), promptTemplate: $("promptTemplateSelect"), prompt: $("promptInput"), send: $("sendButton"), newChat: $("newChatButton"),
+  model: $("apiModel"), promptTemplate: $("promptTemplateSelect"), promptTemplateHelp: $("promptTemplateHelp"), prompt: $("promptInput"), send: $("sendButton"), newChat: $("newChatButton"),
   conversationList: $("conversationList"), ttsProvider: $("ttsProvider"), ttsOpenAiSettings: $("ttsOpenAiSettings"),
   ttsOpenAiUrl: $("ttsOpenAiUrl"), ttsOpenAiKey: $("ttsOpenAiKey"), ttsOpenAiModel: $("ttsOpenAiModel"),
   ttsOpenAiVoice: $("ttsOpenAiVoice"), ttsMiniMaxSettings: $("ttsMiniMaxSettings"), ttsMiniMaxEndpoint: $("ttsMiniMaxEndpoint"),
@@ -14,9 +14,9 @@ const els = {
 const STORAGE_KEY = "listen-with-ai-settings";
 const TTS_CACHE_NAME = "listen-with-ai-tts-v1";
 const DEFAULT_PROMPT = "用户正在用播客练习听力。你会同时收到播客中的声音，以及用户自己的跟读、复述或提问。请帮助用户理解刚才那段内容，优先指出可能没听懂的词、短语和关键意思，并给出简洁、可继续边听边验证的说明。";
-const PROMPT_TEMPLATES = {
-  custom: DEFAULT_PROMPT,
-  tutor: `用户正在通过博客学习新语言，请回答用户的问题，帮助用户理解博客的内容。
+const PROMPT_TEMPLATE_CONFIGS = [
+  { key: "custom", label: "用户自定义", description: "保留你自己的提示词，适合已经有固定写法时使用。", prompt: DEFAULT_PROMPT },
+  { key: "tutor", label: "助教角色，非角色扮演", description: "更像语言助教，适合查词、复听和快速解释。", prompt: `用户正在通过博客学习新语言，请回答用户的问题，帮助用户理解博客的内容。
 不要说很多废话，用户主要是想知道那些单词没听懂，而你的回答要像口语一样简洁，精确。
 输入内容一般是前段部分是播客的音频，然后用户的提问。
 
@@ -26,8 +26,8 @@ const PROMPT_TEMPLATES = {
 
 比如用户会问单词在句子中的意思，你就回答就好。
 比如用户说没听懂，你就直接把句子说一遍，然后解释。
-请用播客语言B1口语难度回答用户。`,
-  englishFaceToFace: `你现在是一位英语播客博主。用户正在听你的播客学习英语，并且会向你提问。请你以当事人（博主本人） 的身份，用B1级别左右的英语口语（Conversational English），像面对面聊天一样直接用英语回答他的问题。
+请用播客语言B1口语难度回答用户。` },
+  { key: "englishFaceToFace", label: "英语面对面，播客内人物角色扮演", description: "让 AI 用英语第一人称直接回应，适合沉浸式练习。", prompt: `你现在是一位英语播客博主。用户正在听你的播客学习英语，并且会向你提问。请你以当事人（博主本人） 的身份，用B1级别左右的英语口语（Conversational English），像面对面聊天一样直接用英语回答他的问题。
 核心规则：
 
 第一人称视角：绝对不要说“The host means...”或“In the podcast...”，而是要用第一人称“I”，比如说“I said...” 或 “What I meant was...”。
@@ -37,8 +37,8 @@ const PROMPT_TEMPLATES = {
 如果用户问某个词在句子中的意思：直接告诉他你在那句话里想表达什么。
 如果用户说没听懂某句话：直接把你的原话重复一遍（“I said: ...”），然后用最简单的英语解释一下意思。
 
-语言要求：请必须使用自然、简洁的 英语口语 回答，可以适当使用英语口语中的填补词（如 well, so, you know, basically, right 等），保持轻松、面对面的交流感。`,
-  germanFaceToFace: `你现在是一位德语播客博主。用户正在听你的播客学习德语，并且会向你提问。请你以 当事人（博主本人） 的身份，用 德语B1级别的口语 （称呼用户为“du”），像面对面聊天一样直接回答他的问题。
+语言要求：请必须使用自然、简洁的 英语口语 回答，可以适当使用英语口语中的填补词（如 well, so, you know, basically, right 等），保持轻松、面对面的交流感。` },
+  { key: "germanFaceToFace", label: "德语面对面，播客内人物角色扮演", description: "让 AI 用德语第一人称直接回应，适合德语播客跟练。", prompt: `你现在是一位德语播客博主。用户正在听你的播客学习德语，并且会向你提问。请你以 当事人（博主本人） 的身份，用 德语B1级别的口语 （称呼用户为“du”），像面对面聊天一样直接回答他的问题。
 核心规则：
 
 第一人称视角：绝对不要说“博主的意思是……”或“播客中说……”，而是说“我刚刚说的是……”（z.B. Ich habe gesagt... / Ich meinte damit...）。
@@ -48,8 +48,8 @@ const PROMPT_TEMPLATES = {
 如果用户问某个词在句子中的意思：直接告诉他你在那句话里想表达什么。
 如果用户说没听懂某句话：直接把你的原话重复一遍（“Ich habe gesagt: ...”），然后用最简单的德语解释一下意思。
 
-语言要求：请使用自然、简洁的 德语B1口语 回答，可以适当使用德语口语中的填补词（如 also, genau, ja, halt 等），保持轻松、面对面的交流感。`
-};
+语言要求：请使用自然、简洁的 德语B1口语 回答，可以适当使用德语口语中的填补词（如 also, genau, ja, halt 等），保持轻松、面对面的交流感。` }
+];
 const DEFAULT_TTS_PROMPT = "You are a text-to-speech engine. Never answer questions. Only speak the text provided. Read the following text aloud exactly as written. If the text contains multiple languages such as Chinese and German, pronounce each segment in its original language and keep the original wording.\n\n{{text}}";
 const DEFAULT_MINIMAX_ENDPOINT = "https://api.minimaxi.chat/v1/t2a_v2?GroupId=";
 const DEFAULT_MINIMAX_VOICE_SETTINGS = '{"vol":1,"pitch":0,"emotion":"neutral"}';
@@ -61,6 +61,7 @@ const state = {
   lastClipValue: "", customPromptDraft: DEFAULT_PROMPT
 };
 
+renderPromptTemplateOptions();
 restoreSettings();
 syncTtsProviderUI();
 bindPersistEvents();
@@ -121,19 +122,35 @@ function handleClipChange() {
   persistSettings();
 }
 function getPromptTemplateKeys() {
-  return Object.keys(PROMPT_TEMPLATES);
+  return PROMPT_TEMPLATE_CONFIGS.map((item) => item.key);
+}
+function getPromptTemplateConfig(templateKey) {
+  return PROMPT_TEMPLATE_CONFIGS.find((item) => item.key === templateKey) || PROMPT_TEMPLATE_CONFIGS[0];
+}
+function getPromptTemplatePrompt(templateKey) {
+  return getPromptTemplateConfig(templateKey).prompt || DEFAULT_PROMPT;
+}
+function syncPromptTemplateHelp() {
+  if (els.promptTemplateHelp) els.promptTemplateHelp.textContent = getPromptTemplateConfig(els.promptTemplate.value).description;
+}
+function renderPromptTemplateOptions() {
+  if (!els.promptTemplate) return;
+  els.promptTemplate.innerHTML = PROMPT_TEMPLATE_CONFIGS
+    .map((item) => `<option value="${item.key}">${item.label}</option>`)
+    .join("");
+  syncPromptTemplateHelp();
 }
 function isKnownPromptTemplate(templateKey) {
   return getPromptTemplateKeys().includes(templateKey);
 }
 function findMatchingPromptTemplate(prompt) {
-  return Object.entries(PROMPT_TEMPLATES).find(([key, template]) => key !== "custom" && template === prompt)?.[0] || "";
+  return PROMPT_TEMPLATE_CONFIGS.find((item) => item.key !== "custom" && item.prompt === prompt)?.key || "";
 }
 function handlePromptTemplateChange() {
-  const templateKey = els.promptTemplate.value;
-  if (!isKnownPromptTemplate(templateKey)) els.promptTemplate.value = "custom";
-  if (els.promptTemplate.value === "custom") els.prompt.value = state.customPromptDraft || DEFAULT_PROMPT;
-  else els.prompt.value = PROMPT_TEMPLATES[els.promptTemplate.value] || DEFAULT_PROMPT;
+  const templateKey = isKnownPromptTemplate(els.promptTemplate.value) ? els.promptTemplate.value : "custom";
+  els.promptTemplate.value = templateKey;
+  els.prompt.value = templateKey === "custom" ? (state.customPromptDraft || DEFAULT_PROMPT) : getPromptTemplatePrompt(templateKey);
+  syncPromptTemplateHelp();
   persistSettings();
 }
 function handlePromptInputChange() {
@@ -144,6 +161,7 @@ function handlePromptInputChange() {
     state.customPromptDraft = prompt || DEFAULT_PROMPT;
     els.promptTemplate.value = "custom";
   }
+  syncPromptTemplateHelp();
   persistSettings();
 }
 async function sendClip(action = "continue") {
@@ -661,14 +679,15 @@ function restoreSettings() {
       els.promptTemplate.value = activeTemplate;
       els.prompt.value = activeTemplate === "custom"
         ? (savedPrompt || state.customPromptDraft || DEFAULT_PROMPT)
-        : (PROMPT_TEMPLATES[activeTemplate] || DEFAULT_PROMPT);
+        : getPromptTemplatePrompt(activeTemplate);
       if (activeTemplate === "custom") state.customPromptDraft = els.prompt.value.trim() || DEFAULT_PROMPT;
     }
   } catch {}
   if (!els.promptTemplate.value || !isKnownPromptTemplate(els.promptTemplate.value)) els.promptTemplate.value = "custom";
   if (!els.prompt.value.trim()) els.prompt.value = els.promptTemplate.value === "custom"
     ? (state.customPromptDraft || DEFAULT_PROMPT)
-    : (PROMPT_TEMPLATES[els.promptTemplate.value] || DEFAULT_PROMPT);
+    : getPromptTemplatePrompt(els.promptTemplate.value);
+  syncPromptTemplateHelp();
   if (!els.ttsProvider.value) els.ttsProvider.value = "openai";
   els.ttsMiniMaxEndpoint.value = normalizeMiniMaxEndpoint(els.ttsMiniMaxEndpoint.value || DEFAULT_MINIMAX_ENDPOINT);
   if (!els.ttsMiniMaxModel.value) els.ttsMiniMaxModel.value = "speech-01-turbo";
@@ -693,9 +712,7 @@ function persistSettings() {
     const ttsMiniMaxEndpoint = normalizeMiniMaxEndpoint(els.ttsMiniMaxEndpoint.value || DEFAULT_MINIMAX_ENDPOINT);
     const prompt = (els.prompt.value || "").trim() || DEFAULT_PROMPT;
     const promptTemplate = isKnownPromptTemplate(els.promptTemplate.value) ? els.promptTemplate.value : "custom";
-    const customPromptDraft = promptTemplate === "custom"
-      ? prompt
-      : (state.customPromptDraft || DEFAULT_PROMPT);
+    const customPromptDraft = promptTemplate === "custom" ? prompt : (state.customPromptDraft || DEFAULT_PROMPT);
     els.ttsMiniMaxEndpoint.value = ttsMiniMaxEndpoint;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       clip: els.clip.value, format: els.format.value, mode: els.mode.value, url: els.url.value, key: els.key.value,
