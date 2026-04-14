@@ -148,10 +148,11 @@ function restoreSettings() {
   } catch {}
 }
 function bindPersistEvents() {
-  [els.clip, els.format, els.mode, els.url, els.key, els.model, els.prompt].forEach((el) => {
+  [els.format, els.mode, els.url, els.key, els.model, els.prompt].forEach((el) => {
     el.addEventListener("input", persistSettings);
     el.addEventListener("change", persistSettings);
   });
+  els.clip.addEventListener("change", persistSettings);
 }
 function persistSettings() {
   try {

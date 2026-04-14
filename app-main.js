@@ -19,8 +19,9 @@ const DEFAULT_MINIMAX_VOICE_SETTINGS = '{"vol":1,"pitch":0,"emotion":"neutral"}'
 const MAX_SECONDS = 60, TARGET_RATE = 16000;
 const state = {
   stream: null, ctx: null, source: null, processor: null, sink: null, queue: [], total: 0,
-  sampleRate: 48000, startedAt: 0, uiTimer: 0, sending: false, threads: [], activeThreadId: null,
-  nextThreadId: 1, nextMessageId: 1, ttsCache: new Map(), ttsObjectUrls: new Set(), localAudioObjectUrls: new Set()
+  sampleRate: 48000, sending: false, threads: [], activeThreadId: null,
+  nextThreadId: 1, nextMessageId: 1, ttsCache: new Map(), ttsObjectUrls: new Set(), localAudioObjectUrls: new Set(),
+  lastClipValue: ""
 };
 
 restoreSettings();
@@ -37,7 +38,7 @@ async function boot() {
   try {
     els.status.textContent = "申请麦克风权限中…";
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
-    const AC = window.AudioContext || window.webkitAudioContext;
+    const AC = window.AudioContext || window["webkitAudioContext"];
     state.stream = stream;
     state.ctx = new AC();
     await state.ctx.resume();
@@ -50,11 +51,9 @@ async function boot() {
     state.source.connect(state.processor);
     state.processor.connect(state.sink);
     state.sink.connect(state.ctx.destination);
-    state.startedAt = Date.now();
-    state.uiTimer = window.setInterval(updateStats, 250);
     els.status.textContent = "录音中（PCM 环形缓冲已启动）";
     els.mime.textContent = "缓存引擎：PCM / 上传格式：WAV";
-    updateStats();
+    updateStats(true);
     renderConversation();
   } catch (error) {
     els.status.textContent = "无法录音";
@@ -72,10 +71,17 @@ function pushChunk(input) {
     else { state.queue[0] = first.slice(over); state.total -= over; }
   }
 }
-function updateStats() {
-  const selectedSeconds = Number(els.clip.value) || 30;
+function updateStats(force = false) {
+  const clipValue = String(els.clip.value || "30");
+  if (!force && clipValue === state.lastClipValue) return;
+  state.lastClipValue = clipValue;
+  const selectedSeconds = Number(clipValue) || 30;
   els.buffer.textContent = `${MAX_SECONDS} 秒`;
   els.range.textContent = `最近 ${selectedSeconds} 秒`;
+}
+function handleClipChange() {
+  updateStats();
+  persistSettings();
 }
 async function sendClip(action = "continue") {
   if (state.sending) return;
@@ -121,8 +127,7 @@ async function sendClip(action = "continue") {
 function clearRecordingBuffer() {
   state.queue = [];
   state.total = 0;
-  state.startedAt = Date.now();
-  updateStats();
+  updateStats(true);
 }
 function resetConversationSession() {
   state.threads = [];
@@ -173,7 +178,7 @@ function encodeWav(samples, sampleRate) {
   for (let i = 0, p = 44; i < samples.length; i += 1, p += 2) { const s = Math.max(-1, Math.min(1, samples[i])); view.setInt16(p, s < 0 ? s * 0x8000 : s * 0x7fff, true); }
   return new Blob([buffer], { type: "audio/wav" });
 }
-async function sendMultipart(file, thread) {
+async function sendMultipart(_file, thread) {
   const mergedAudio = buildThreadAudioBlob(thread);
   const body = new FormData();
   body.append("file", mergedAudio.blob, `conversation.${mergedAudio.ext}`);
@@ -181,12 +186,12 @@ async function sendMultipart(file, thread) {
   body.append("prompt", buildRequestPrompt(thread));
   return parseResponse(await fetch(els.url.value.trim(), { method: "POST", headers: authHeaders(), body }));
 }
-async function sendResponses(file, thread) {
+async function sendResponses(_file, thread) {
   const content = [{ type: "input_text", text: buildRequestPrompt(thread) }, ...buildAudioInputs(thread, "responses")];
   const body = { model: els.model.value.trim(), input: [{ role: "user", content }] };
   return parseResponse(await fetch(els.url.value.trim(), { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) }));
 }
-async function sendChat(file, thread) {
+async function sendChat(_file, thread) {
   const content = [{ type: "text", text: buildRequestPrompt(thread) }, ...buildAudioInputs(thread, "chat")];
   const body = { model: els.model.value.trim(), messages: [{ role: "user", content }], temperature: 0 };
   return parseResponse(await fetch(els.url.value.trim(), { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) }));
@@ -592,9 +597,11 @@ function restoreSettings() {
   if (!els.ttsMiniMaxModel.value) els.ttsMiniMaxModel.value = "speech-01-turbo";
   if (!els.ttsMiniMaxLanguageBooster.value) els.ttsMiniMaxLanguageBooster.value = "auto";
   if (!els.ttsMiniMaxVoiceSettings.value) els.ttsMiniMaxVoiceSettings.value = DEFAULT_MINIMAX_VOICE_SETTINGS;
+  updateStats(true);
 }
 function bindPersistEvents() {
-  [els.clip, els.format, els.mode, els.url, els.key, els.model, els.prompt, els.ttsProvider, els.ttsOpenAiUrl, els.ttsOpenAiKey, els.ttsOpenAiModel, els.ttsOpenAiVoice, els.ttsMiniMaxEndpoint, els.ttsMiniMaxKey, els.ttsMiniMaxGroupId, els.ttsMiniMaxModel, els.ttsMiniMaxLanguageBooster, els.ttsMiniMaxVoiceId, els.ttsMiniMaxSpeed, els.ttsMiniMaxVoiceSettings, els.ttsPrompt].forEach((el) => ["input", "change"].forEach((evt) => el.addEventListener(evt, persistSettings)));
+  [els.format, els.mode, els.url, els.key, els.model, els.prompt, els.ttsProvider, els.ttsOpenAiUrl, els.ttsOpenAiKey, els.ttsOpenAiModel, els.ttsOpenAiVoice, els.ttsMiniMaxEndpoint, els.ttsMiniMaxKey, els.ttsMiniMaxGroupId, els.ttsMiniMaxModel, els.ttsMiniMaxLanguageBooster, els.ttsMiniMaxVoiceId, els.ttsMiniMaxSpeed, els.ttsMiniMaxVoiceSettings, els.ttsPrompt].forEach((el) => ["input", "change"].forEach((evt) => el.addEventListener(evt, persistSettings)));
+  els.clip.addEventListener("change", handleClipChange);
   els.ttsProvider.addEventListener("change", syncTtsProviderUI);
   els.ttsMiniMaxEndpoint.addEventListener("blur", () => {
     els.ttsMiniMaxEndpoint.value = normalizeMiniMaxEndpoint(els.ttsMiniMaxEndpoint.value || DEFAULT_MINIMAX_ENDPOINT);
@@ -618,7 +625,6 @@ function persistSettings() {
   } catch {}
 }
 function cleanup() {
-  clearInterval(state.uiTimer);
   state.ttsAudio?.pause();
   state.stream?.getTracks?.().forEach((track) => track.stop());
   [state.processor, state.source, state.sink].forEach((node) => node?.disconnect?.());
