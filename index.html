@@ -26,26 +26,26 @@
       <footer class="composer-wrap" aria-label="语音输入区">
         <div class="composer-box">
           <div class="composer-field">
-            <div class="mic-visual" aria-hidden="true">
-              <span class="mic-pulse pulse-a"></span>
-              <span class="mic-pulse pulse-b"></span>
-              <span class="mic-core">🎙</span>
-            </div>
-            <div class="composer-copy">
-              <p class="composer-label">语音输入</p>
-              <strong id="recordingStatus">准备中…</strong>
-              <p class="composer-placeholder">持续收听播客和你的跟读、复述或提问，发送时会把最近一段录音交给 AI。</p>
-              <div class="composer-meta">
-                <span id="mimeLabel" class="composer-pill">正在准备最近音频缓存</span>
-                <span id="rangeStatus" class="composer-pill">最近 20 秒</span>
-                <span id="bufferStatus" class="composer-pill">缓存 60 秒</span>
+            <div class="composer-status">
+              <div class="mic-visual" aria-hidden="true">
+                <span class="mic-pulse pulse-a"></span>
+                <span class="mic-pulse pulse-b"></span>
+                <span class="mic-core">🎙</span>
+              </div>
+              <div class="composer-copy">
+                <strong id="recordingStatus">准备中…</strong>
+                <span id="rangeStatus" class="composer-range">最近 30 秒</span>
               </div>
             </div>
+            <div class="composer-actions">
+              <button id="newChatButton" class="send-inline secondary-button" type="button">新的提问</button>
+              <button id="sendButton" class="send-inline" type="button">继续提问</button>
+            </div>
           </div>
-
-          <div class="composer-actions">
-            <button id="newChatButton" class="send-inline secondary-button" type="button">新的提问</button>
-            <button id="sendButton" class="send-inline" type="button">继续提问</button>
+          <p class="composer-placeholder">保持录音中，点击按钮即可把最近一段声音发送给 AI。</p>
+          <div class="composer-meta" hidden aria-hidden="true">
+            <span id="mimeLabel">正在准备最近音频缓存</span>
+            <span id="bufferStatus">录音缓冲已开启</span>
           </div>
         </div>
       </footer>
@@ -88,8 +88,8 @@
                 <option>5</option>
                 <option>10</option>
                 <option>15</option>
-                <option selected>20</option>
-                <option>30</option>
+                <option>20</option>
+                <option selected>30</option>
                 <option>35</option>
                 <option>40</option>
                 <option>55</option>

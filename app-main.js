@@ -80,7 +80,7 @@ window.addEventListener("beforeunload", cleanup);
 async function boot() {
   try {
     document.body.dataset.micState = "requesting";
-    els.status.textContent = "申请麦克风权限中…";
+    els.status.textContent = "请求麦克风权限…";
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
     const AC = window.AudioContext || window["webkitAudioContext"];
     state.stream = stream;
@@ -96,7 +96,7 @@ async function boot() {
     state.processor.connect(state.sink);
     state.sink.connect(state.ctx.destination);
     document.body.dataset.micState = "ready";
-    els.status.textContent = "录音中（PCM 环形缓冲已启动）";
+    els.status.textContent = "正在录音";
     syncMimeLabel();
     updateStats(true);
     renderConversation();
@@ -122,12 +122,11 @@ function updateStats(force = false) {
   if (!force && clipValue === state.lastClipValue) return;
   state.lastClipValue = clipValue;
   const selectedSeconds = Number(clipValue) || 30;
-  els.buffer.textContent = `缓存 ${MAX_SECONDS} 秒`;
+  els.buffer.textContent = "录音缓冲已开启";
   els.range.textContent = `最近 ${selectedSeconds} 秒`;
 }
 function syncMimeLabel() {
-  const format = String(els.format?.value || "wav").trim().toUpperCase();
-  els.mime.textContent = `格式偏好：${format}`;
+  els.mime.textContent = "发送时会附带最近录音";
 }
 function handleClipChange() {
   updateStats();
@@ -273,7 +272,7 @@ async function sendClip(action = "continue") {
   const thread = action === "new" || !getActiveThread() ? createThread() : getActiveThread();
   appendMessage(thread.id, {
     role: "user",
-    text: `语音提问（最近 ${Math.round(seconds)} 秒）`,
+    text: `最近 ${Math.round(seconds)} 秒语音`,
     status: "done",
     localAudioUrl: attachLocalAudioObjectUrl(prepared.blob),
     localAudioMime: prepared.blob.type || "audio/wav",
@@ -482,10 +481,11 @@ function scheduleConversationScroll() {
   });
 }
 function renderMessage(threadId, message) {
+  const roleLabel = message.role === "assistant" ? `<div class="message-role">AI</div>` : "";
   return `
     <div class="message-row role-${message.role}" data-thread-id="${threadId}" data-message-id="${message.id}">
       <article class="message-bubble">
-        <div class="message-role">${message.role === "assistant" ? "AI" : "你"}</div>
+        ${roleLabel}
         <div class="message-text">${escapeHTML(message.text)}</div>
         ${message.role === "assistant" ? renderAssistantAudio(threadId, message) : renderUserAudio(message)}
       </article>
@@ -496,7 +496,6 @@ function renderUserAudio(message) {
   if (!message.localAudioUrl) return "";
   return `
     <div class="message-audio user-audio">
-      <span class="audio-status">你的本地录音</span>
       <audio controls preload="metadata" src="${message.localAudioUrl}"></audio>
     </div>
   `;

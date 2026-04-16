@@ -254,9 +254,15 @@ label,
 
 .role-user .message-bubble {
   width: min(100%, 680px);
+  gap: 8px;
+  padding: 12px 16px;
   border-color: rgba(196, 93, 58, 0.26);
   border-radius: 26px 26px 12px 26px;
   background: linear-gradient(180deg, #eadfce 0%, #e6d7c5 100%);
+}
+
+.role-user .message-role {
+  display: none;
 }
 
 .message-role,
@@ -282,6 +288,12 @@ label,
   gap: 10px;
   padding-top: 12px;
   border-top: 1px solid rgba(221, 213, 200, 0.9);
+}
+
+.user-audio {
+  gap: 6px;
+  padding-top: 0;
+  border-top: none;
 }
 
 .message-audio audio {
@@ -320,53 +332,55 @@ label,
 .composer-box {
   width: min(920px, 100%);
   display: grid;
-  gap: 18px;
-  padding: 18px;
+  gap: 10px;
+  padding: 14px 16px 12px;
   border: 1px solid rgba(217, 205, 188, 0.95);
-  border-radius: 30px;
+  border-radius: 24px;
   background: rgba(252, 250, 246, 0.96);
   box-shadow: 0 18px 44px rgba(24, 24, 22, 0.08);
 }
 
 .composer-field {
   display: flex;
-  gap: 18px;
-  align-items: flex-start;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 58px;
+}
+
+.composer-status {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
 .composer-copy {
   flex: 1;
   min-width: 0;
-  display: grid;
-  gap: 8px;
-}
-
-.composer-label {
-  margin: 0;
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
 .composer-copy strong {
-  font-size: 1.02rem;
+  font-size: 0.98rem;
+  white-space: nowrap;
 }
 
 .composer-placeholder {
   margin: 0;
   color: var(--muted);
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.5;
+  padding-left: 2px;
 }
 
 .composer-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  display: none;
 }
 
-.composer-pill,
 .pill {
   display: inline-flex;
   align-items: center;
@@ -379,11 +393,18 @@ label,
   font-size: 14px;
 }
 
+.composer-range {
+  color: var(--muted);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
 .composer-actions {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  margin-left: auto;
 }
 
 .send-inline {
@@ -403,30 +424,30 @@ label,
 
 .mic-visual {
   position: relative;
-  width: 74px;
-  height: 74px;
+  width: 52px;
+  height: 52px;
   display: grid;
   place-items: center;
-  flex: 0 0 74px;
+  flex: 0 0 52px;
 }
 
 .mic-core {
   position: relative;
   z-index: 2;
-  width: 56px;
-  height: 56px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   border-radius: 50%;
   background: linear-gradient(180deg, #d87a58, #bb5536);
   color: #fff7f2;
   box-shadow: 0 10px 24px rgba(201, 100, 66, 0.28);
-  font-size: 26px;
+  font-size: 20px;
 }
 
 .mic-pulse {
   position: absolute;
-  inset: 6px;
+  inset: 4px;
   border-radius: 50%;
   border: 2px solid rgba(201, 100, 66, 0.24);
   animation: pulseRing 2.2s ease-out infinite;
@@ -690,32 +711,45 @@ body[data-send-state="sending"] .mic-core {
   }
 
   .composer-box {
-    padding: 16px;
-    border-radius: 24px;
+    padding: 14px;
+    border-radius: 20px;
   }
 
   .composer-field {
-    gap: 14px;
+    align-items: flex-start;
+    flex-wrap: wrap;
   }
 
   .composer-actions {
+    width: 100%;
     justify-content: flex-start;
+    flex-wrap: wrap;
+    margin-left: 0;
   }
 
   .composer-actions .send-inline {
     flex: 1 1 100%;
   }
 
+  .composer-status {
+    width: 100%;
+  }
+
+  .composer-copy {
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+
   .mic-visual {
-    width: 64px;
-    height: 64px;
-    flex-basis: 64px;
+    width: 48px;
+    height: 48px;
+    flex-basis: 48px;
   }
 
   .mic-core {
-    width: 50px;
-    height: 50px;
-    font-size: 22px;
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
   }
 
   .conversation-list {
