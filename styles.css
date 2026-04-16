@@ -283,6 +283,11 @@ label,
   line-height: 1.72;
 }
 
+.message-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
 .message-audio {
   display: grid;
   gap: 10px;
@@ -317,6 +322,17 @@ label,
   border-radius: 999px;
   font-size: 13px;
   box-shadow: none;
+}
+
+.mini-button-secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid rgba(201, 100, 66, 0.28);
+}
+
+.mini-button-secondary:not(:disabled):hover {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
 
 .mini-button:not(:disabled):hover {

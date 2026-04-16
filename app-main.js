@@ -281,27 +281,53 @@ async function sendClip(action = "continue") {
     audioSamples: prepared.samples,
     audioSampleRate: prepared.sampleRate
   });
-  const assistantMessage = appendMessage(thread.id, { role: "assistant", text: "AI 正在思考…", status: "loading" });
-  state.sending = true;
-  els.send.disabled = true;
-  els.newChat.disabled = true;
-  document.body.dataset.sendState = "sending";
+  const assistantMessage = appendMessage(thread.id, { role: "assistant", text: "AI 正在思考…", status: "loading", requestMode: els.mode.value });
+  renderConversation();
+  await requestAssistantReply(thread, assistantMessage);
+}
+async function requestAssistantReply(thread, assistantMessage) {
+  if (!thread || !assistantMessage || state.sending) return;
+  const requestMode = assistantMessage.requestMode || els.mode.value;
+  updateMessage(thread.id, assistantMessage.id, {
+    text: "AI 正在思考…",
+    status: "loading",
+    audioState: "idle",
+    audioError: "",
+    requestMode
+  });
+  setSendingState(true);
   renderConversation();
   try {
-    const result = els.mode.value === "responses" ? await sendResponses(prepared, thread)
-      : els.mode.value === "multipart" ? await sendMultipart(prepared, thread) : await sendChat(prepared, thread);
-    updateMessage(thread.id, assistantMessage.id, { text: result, status: "done" });
+    const result = requestMode === "responses" ? await sendResponses(null, thread)
+      : requestMode === "multipart" ? await sendMultipart(null, thread) : await sendChat(null, thread);
+    updateMessage(thread.id, assistantMessage.id, {
+      text: result,
+      status: "done",
+      audioState: "idle",
+      audioError: "",
+      requestMode
+    });
     renderConversation();
     if (els.ttsAuto.checked) await ensureMessageAudio(thread.id, assistantMessage.id, true);
   } catch (error) {
-    updateMessage(thread.id, assistantMessage.id, { text: `发送失败：${error.message}`, status: "error" });
+    updateMessage(thread.id, assistantMessage.id, {
+      text: `发送失败：${error.message}`,
+      status: "error",
+      audioState: "idle",
+      audioError: "",
+      requestMode
+    });
     renderConversation();
   } finally {
-    state.sending = false;
-    els.send.disabled = false;
-    els.newChat.disabled = false;
-    delete document.body.dataset.sendState;
+    setSendingState(false);
   }
+}
+function setSendingState(sending) {
+  state.sending = sending;
+  els.send.disabled = sending;
+  els.newChat.disabled = sending;
+  if (sending) document.body.dataset.sendState = "sending";
+  else delete document.body.dataset.sendState;
 }
 function clearRecordingBuffer() {
   state.queue = [];
@@ -452,7 +478,8 @@ function appendMessage(threadId, payload) {
     requestAudioBase64: payload.requestAudioBase64 || "",
     requestAudioFormat: payload.requestAudioFormat || "wav",
     audioSamples: payload.audioSamples || null,
-    audioSampleRate: payload.audioSampleRate || TARGET_RATE
+    audioSampleRate: payload.audioSampleRate || TARGET_RATE,
+    requestMode: payload.requestMode || ""
   };
   thread.messages.push(message);
   state.activeThreadId = thread.id;
@@ -487,8 +514,17 @@ function renderMessage(threadId, message) {
       <article class="message-bubble">
         ${roleLabel}
         <div class="message-text">${escapeHTML(message.text)}</div>
+        ${message.role === "assistant" ? renderMessageActions(threadId, message) : ""}
         ${message.role === "assistant" ? renderAssistantAudio(threadId, message) : renderUserAudio(message)}
       </article>
+    </div>
+  `;
+}
+function renderMessageActions(threadId, message) {
+  if (message.status !== "error") return "";
+  return `
+    <div class="message-actions">
+      <button class="mini-button mini-button-secondary" type="button" data-action="retry-message" data-thread-id="${threadId}" data-message-id="${message.id}" ${state.sending ? "disabled" : ""}>重试</button>
     </div>
   `;
 }
@@ -502,6 +538,7 @@ function renderUserAudio(message) {
 }
 function renderAssistantAudio(threadId, message) {
   if (message.status === "loading") return `<div class="message-audio"><span class="audio-status">正在生成回复…</span></div>`;
+  if (message.status === "error") return "";
   const canPlay = message.audioState === "ready" && message.audioUrl;
   const isLoading = message.audioState === "loading";
   const action = canPlay ? "play-audio" : "generate-audio";
@@ -522,7 +559,12 @@ function handleConversationClick(event) {
   if (!button) return;
   const { action, threadId, messageId } = button.dataset;
   if (action === "play-audio") return void playMessageAudio(messageId);
-  if (action === "generate-audio") ensureMessageAudio(threadId, messageId, true);
+  if (action === "generate-audio") return void ensureMessageAudio(threadId, messageId, true);
+  if (action === "retry-message") {
+    const message = getMessage(threadId, messageId);
+    if (!message || state.sending) return;
+    requestAssistantReply(findThread(threadId), message);
+  }
 }
 function isSettingsOpen() {
   return document.body.dataset.settingsOpen === "true";
