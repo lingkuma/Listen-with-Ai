@@ -9,7 +9,8 @@ const els = {
   ttsMiniMaxKey: $("ttsMiniMaxKey"), ttsMiniMaxGroupId: $("ttsMiniMaxGroupId"), ttsMiniMaxModel: $("ttsMiniMaxModel"),
   ttsMiniMaxLanguageBooster: $("ttsMiniMaxLanguageBooster"), ttsMiniMaxVoiceId: $("ttsMiniMaxVoiceId"),
   ttsMiniMaxSpeed: $("ttsMiniMaxSpeed"), ttsMiniMaxVoiceSettings: $("ttsMiniMaxVoiceSettings"),
-  ttsPrompt: $("ttsPromptInput"), ttsAuto: $("ttsAutoPlay")
+  ttsPrompt: $("ttsPromptInput"), ttsAuto: $("ttsAutoPlay"),
+  settingsToggle: $("settingsToggle"), settingsClose: $("settingsClose"), settingsBackdrop: $("settingsBackdrop"), settingsPanel: $("settingsPanel")
 };
 const STORAGE_KEY = "listen-with-ai-settings";
 const TTS_CACHE_NAME = "listen-with-ai-tts-v1";
@@ -66,7 +67,9 @@ const state = {
 renderPromptTemplateOptions();
 restoreSettings();
 syncTtsProviderUI();
+syncMimeLabel();
 bindPersistEvents();
+bindShellEvents();
 renderConversation();
 boot();
 els.send.addEventListener("click", () => sendClip("continue"));
@@ -76,6 +79,7 @@ window.addEventListener("beforeunload", cleanup);
 
 async function boot() {
   try {
+    document.body.dataset.micState = "requesting";
     els.status.textContent = "申请麦克风权限中…";
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
     const AC = window.AudioContext || window["webkitAudioContext"];
@@ -91,11 +95,13 @@ async function boot() {
     state.source.connect(state.processor);
     state.processor.connect(state.sink);
     state.sink.connect(state.ctx.destination);
+    document.body.dataset.micState = "ready";
     els.status.textContent = "录音中（PCM 环形缓冲已启动）";
-    els.mime.textContent = "缓存引擎：PCM / 上传格式：WAV";
+    syncMimeLabel();
     updateStats(true);
     renderConversation();
   } catch (error) {
+    document.body.dataset.micState = "error";
     els.status.textContent = "无法录音";
     renderConversation(`麦克风权限申请失败：${error.message}`);
   }
@@ -116,8 +122,12 @@ function updateStats(force = false) {
   if (!force && clipValue === state.lastClipValue) return;
   state.lastClipValue = clipValue;
   const selectedSeconds = Number(clipValue) || 30;
-  els.buffer.textContent = `${MAX_SECONDS} 秒`;
+  els.buffer.textContent = `缓存 ${MAX_SECONDS} 秒`;
   els.range.textContent = `最近 ${selectedSeconds} 秒`;
+}
+function syncMimeLabel() {
+  const format = String(els.format?.value || "wav").trim().toUpperCase();
+  els.mime.textContent = `格式偏好：${format}`;
 }
 function handleClipChange() {
   updateStats();
@@ -456,31 +466,19 @@ function updateMessage(threadId, messageId, patch) {
   return message;
 }
 function renderConversation(notice = "") {
-  const threads = state.threads.filter((thread) => thread.messages.length);
-  if (!threads.length) {
+  const thread = getActiveThread() || state.threads[state.threads.length - 1] || null;
+  const messages = thread?.messages || [];
+  if (!messages.length) {
     const emptyText = notice || "录音已开始。先说出你的问题，然后点击“继续提问”；如果想重新开始一段全新的对话，再点击“新的提问”。";
     els.conversationList.innerHTML = `<div class="empty-conversation">${escapeHTML(emptyText)}</div>`;
     return;
   }
-  els.conversationList.innerHTML = threads.map((thread, index) => `
-    <section class="conversation-thread ${thread.id === state.activeThreadId ? "is-active" : ""}">
-      <div class="thread-head">
-        <span class="thread-badge">${thread.id === state.activeThreadId ? "当前对话" : `历史对话 ${index + 1}`}</span>
-        <span class="thread-meta">${thread.messages.length} 条消息</span>
-      </div>
-      <div class="thread-messages">
-        ${thread.messages.map((message) => renderMessage(thread.id, message)).join("")}
-      </div>
-    </section>
-  `).join("");
+  els.conversationList.innerHTML = messages.map((message) => renderMessage(thread.id, message)).join("");
   scheduleConversationScroll();
 }
 function scheduleConversationScroll() {
   window.requestAnimationFrame(() => {
-    const rows = els.conversationList.querySelectorAll(".message-row");
-    const lastRow = rows[rows.length - 1];
-    if (!lastRow) return;
-    lastRow.scrollIntoView({ block: "end", behavior: state.sending ? "smooth" : "auto" });
+    els.conversationList.scrollTo({ top: els.conversationList.scrollHeight, behavior: state.sending ? "smooth" : "auto" });
   });
 }
 function renderMessage(threadId, message) {
@@ -526,6 +524,25 @@ function handleConversationClick(event) {
   const { action, threadId, messageId } = button.dataset;
   if (action === "play-audio") return void playMessageAudio(messageId);
   if (action === "generate-audio") ensureMessageAudio(threadId, messageId, true);
+}
+function isSettingsOpen() {
+  return document.body.dataset.settingsOpen === "true";
+}
+function setSettingsOpen(open) {
+  if (open) document.body.dataset.settingsOpen = "true";
+  else delete document.body.dataset.settingsOpen;
+  els.settingsToggle?.setAttribute("aria-expanded", String(open));
+  els.settingsPanel?.setAttribute("aria-hidden", String(!open));
+  els.settingsBackdrop?.setAttribute("aria-hidden", String(!open));
+}
+function bindShellEvents() {
+  setSettingsOpen(false);
+  els.settingsToggle?.addEventListener("click", () => setSettingsOpen(!isSettingsOpen()));
+  els.settingsClose?.addEventListener("click", () => setSettingsOpen(false));
+  els.settingsBackdrop?.addEventListener("click", () => setSettingsOpen(false));
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && isSettingsOpen()) setSettingsOpen(false);
+  });
 }
 function buildTtsPrompt(text) {
   const template = (els.ttsPrompt?.value || DEFAULT_TTS_PROMPT).trim() || DEFAULT_TTS_PROMPT;
@@ -792,6 +809,7 @@ function restoreSettings() {
 }
 function bindPersistEvents() {
   [els.format, els.mode, els.url, els.key, els.model, els.ttsProvider, els.ttsOpenAiUrl, els.ttsOpenAiKey, els.ttsOpenAiModel, els.ttsOpenAiVoice, els.ttsMiniMaxEndpoint, els.ttsMiniMaxKey, els.ttsMiniMaxGroupId, els.ttsMiniMaxModel, els.ttsMiniMaxLanguageBooster, els.ttsMiniMaxVoiceId, els.ttsMiniMaxSpeed, els.ttsMiniMaxVoiceSettings, els.ttsPrompt].forEach((el) => ["input", "change"].forEach((evt) => el.addEventListener(evt, persistSettings)));
+  ["input", "change"].forEach((evt) => els.format.addEventListener(evt, syncMimeLabel));
   els.clip.addEventListener("change", handleClipChange);
   els.promptTemplate.addEventListener("change", handlePromptTemplateChange);
   ["input", "change"].forEach((evt) => els.promptTemplateName.addEventListener(evt, handlePromptTemplateNameChange));
